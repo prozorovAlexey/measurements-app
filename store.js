@@ -6,6 +6,7 @@ export const KEYS = {
   token: 'bm.token',
   repo: 'bm.repo', // { owner, repo, branch }
   index: 'bm.index_cache', // { data, fetchedAt } fetchedAt — ISO-строка
+  catalog: 'bm.catalog_cache', // { data, fetchedAt } то же, для catalog.json
   opens: 'bm.cheatsheet_opens' // { count, lastAt }
 };
 
@@ -128,6 +129,24 @@ export function getIndexCache() {
 export function setIndexCache(data) {
   const entry = { data, fetchedAt: new Date().toISOString() };
   const ok = writeJSON(KEYS.index, entry);
+  return ok ? entry : null;
+}
+
+// --- Кэш catalog.json ----------------------------------------------------
+// Каталог лежит рядом с приложением, но до появления service worker (T7)
+// офлайн-старт возможен только из localStorage.
+
+export function getCatalogCache() {
+  const stored = readJSON(KEYS.catalog);
+  if (!isPlainObject(stored)) return null;
+  if (!('data' in stored) || stored.data === undefined) return null;
+  if (!nonEmptyString(stored.fetchedAt)) return null;
+  return { data: stored.data, fetchedAt: stored.fetchedAt };
+}
+
+export function setCatalogCache(data) {
+  const entry = { data, fetchedAt: new Date().toISOString() };
+  const ok = writeJSON(KEYS.catalog, entry);
   return ok ? entry : null;
 }
 

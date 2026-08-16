@@ -341,3 +341,60 @@ body {
 .toast--error {
   border-color: var(--danger);
 }
+
+/* Шпаргалка (T4, §7.1)
+   Строка замера показывается всегда: и без значения, и с устаревшим.
+   Отличается только цвет даты (.date--stale) — размер и место те же. */
+
+.cheat-section h2 {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cheat-row {
+  align-items: center;
+  min-height: var(--tap);
+  gap: calc(var(--gap) / 2);
+}
+
+.cheat-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Подпись замера читается как основной текст: по ней ищут строку глазами. */
+.cheat-row__name {
+  color: var(--fg);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cheat-row__value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.cheat-row__unit {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+/* Значения ещё нет — прочерк того же размера: пустое место напоминает,
+   что замер стоит сделать. */
+.value--empty {
+  color: var(--muted);
+}
+
+.cheat-notice__link {
+  margin-top: calc(var(--gap) / 2);
+  text-decoration: none;
+}
