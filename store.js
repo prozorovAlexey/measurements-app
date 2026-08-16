@@ -133,8 +133,9 @@ export function setIndexCache(data) {
 }
 
 // --- Кэш catalog.json ----------------------------------------------------
-// Каталог лежит рядом с приложением, но до появления service worker (T7)
-// офлайн-старт возможен только из localStorage.
+// Каталог лежит рядом с приложением и с T7 кэшируется service worker'ом.
+// Эта копия — второй слой: она работает там, где SW не поднялся (приватное
+// окно, http:// без TLS, отказ регистрации).
 
 export function getCatalogCache() {
   const stored = readJSON(KEYS.catalog);

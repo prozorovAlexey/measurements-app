@@ -219,10 +219,44 @@ window.addEventListener('online', () => {
   void flushQueue();
 });
 
+// --- Service worker (T7) --------------------------------------------------
+
+// Про готовое обновление говорим словами: skipWaiting() в sw.js нет
+// намеренно, новая версия включается при следующем полном запуске.
+function watchUpdates(registration) {
+  registration.addEventListener('updatefound', () => {
+    const worker = registration.installing;
+    if (!worker) return;
+    worker.addEventListener('statechange', () => {
+      // controller уже есть — значит это обновление, а не первая установка,
+      // про которую пользователю знать незачем.
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        toast('Обновление загружено, включится при следующем запуске', 'stale');
+      }
+    });
+  });
+}
+
+function registerServiceWorker() {
+  // updateViaCache: 'none' — сам sw.js всегда проверяется в сети. Иначе
+  // HTTP-кэш браузера законсервировал бы версию кэша вместе со скриптом.
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then(watchUpdates)
+    .catch(() => {
+      // Регистрация не прошла — приложение просто работает без офлайна.
+      // Молча: на http:// без TLS и в приватном окне это норма, а не поломка.
+    });
+}
+
+// Регистрируем после load: установка тянет всю оболочку и конкурировала бы
+// за сеть с первой отрисовкой шпаргалки (§8 спеки).
+if ('serviceWorker' in navigator) {
+  if (document.readyState === 'complete') registerServiceWorker();
+  else window.addEventListener('load', registerServiceWorker, { once: true });
+}
+
 // --- Старт ---------------------------------------------------------------
 
 window.addEventListener('hashchange', router);
 router();
 void flushQueue();
-
-// T7: регистрация service worker
