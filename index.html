@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Замеры</title>
+  <meta name="description" content="Личный трекер замеров тела: последние значения, ввод сессии, история.">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="appbar">
+    <h1 class="appbar__title" id="screen-title">Замеры</h1>
+    <span class="status" id="header-status" role="status" aria-live="polite" hidden></span>
+  </header>
+
+  <main id="app" class="screen"></main>
+
+  <nav class="tabbar" aria-label="Основная навигация">
+    <a class="tabbar__item" href="#/" data-tab="cheatsheet">
+      <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect>
+        <path d="M7.5 9.5h5M7.5 13h9M7.5 16.5h4"></path>
+      </svg>
+      <span class="tabbar__label">Шпаргалка</span>
+    </a>
+    <a class="tabbar__item" href="#/entry" data-tab="entry">
+      <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="M12 8v8M8 12h8"></path>
+      </svg>
+      <span class="tabbar__label">Ввод</span>
+    </a>
+    <a class="tabbar__item" href="#/history/weight" data-tab="history">
+      <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4.5 4.5v15h15"></path>
+        <path d="M7.5 15.5l3.5-4.5 3 2.5 4.5-6"></path>
+      </svg>
+      <span class="tabbar__label">История</span>
+    </a>
+    <a class="tabbar__item" href="#/settings" data-tab="settings">
+      <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 8h9M17.5 8H20M4 16h3.5M12 16h8"></path>
+        <circle cx="15" cy="8" r="2.2"></circle>
+        <circle cx="9.5" cy="16" r="2.2"></circle>
+      </svg>
+      <span class="tabbar__label">Настройки</span>
+    </a>
+  </nav>
+
+  <div class="toast-host" id="toast-host" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

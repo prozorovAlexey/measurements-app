@@ -1,0 +1,203 @@
+{
+  "protocol_version": 1,
+  "measurements": [
+    {
+      "key": "weight",
+      "label": "Вес",
+      "class": "dynamic",
+      "unit": "kg",
+      "reps": 1,
+      "frequency_days": 7,
+      "landmark": "Весы на твёрдом ровном полу, без одежды",
+      "posture": "Утро, после туалета, до еды, до тренировки",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "waist_who",
+      "label": "Талия (WHO)",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Середина между нижним краем последнего ребра и гребнем подвздошной кости",
+      "posture": "Стоя, руки опущены, конец спокойного выдоха, лента горизонтально",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "waist_umbilicus",
+      "label": "Талия (пупок)",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Уровень пупка",
+      "posture": "Стоя, лента горизонтально",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "hip",
+      "label": "Бёдра",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Максимальная точка ягодиц",
+      "posture": "Стоя, стопы вместе",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "chest",
+      "label": "Грудь",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Уровень сосков",
+      "posture": "Стоя, руки опущены, конец спокойного выдоха",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "neck",
+      "label": "Шея",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Ниже гортани",
+      "posture": "Стоя, лента слегка наклонена вперёд",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "biceps_relaxed",
+      "label": "Бицепс расслабл.",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Максимальный обхват",
+      "posture": "Стоя, рука опущена вдоль тела",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "biceps_flexed",
+      "label": "Бицепс напряж.",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Максимальный обхват",
+      "posture": "Стоя, рука согнута 90°, напряжена",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "thigh",
+      "label": "Бедро",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "10 см выше верхнего края надколенника",
+      "posture": "Стоя, вес на обеих ногах",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "calf",
+      "label": "Голень",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Максимальный обхват",
+      "posture": "Стоя, вес на обеих ногах",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "height",
+      "label": "Рост",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Отметка на стене на уровне макушки",
+      "posture": "Утром, пятки/ягодицы/лопатки у стены, взгляд горизонтально",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "foot_length",
+      "label": "Длина стопы",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Пятка у стены",
+      "posture": "Стоя, вес на обе ноги, обе стопы отдельно",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "foot_width",
+      "label": "Ширина стопы",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Максимальная ширина плюсны",
+      "posture": "Стоя",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "inseam",
+      "label": "Внутр. шов",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "От промежности до пола",
+      "posture": "Стоя, без обуви",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "sleeve",
+      "label": "Длина рукава",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "От точки плеча до косточки запястья",
+      "posture": "Стоя, рука слегка согнута",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "shoulder_width",
+      "label": "Ширина плеч",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Между акромионами",
+      "posture": "Стоя, со спины",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "head_circ",
+      "label": "Обхват головы",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Над бровями и над ушами, максимальный обхват",
+      "posture": "Стоя",
+      "show_in_cheatsheet": true
+    },
+    {
+      "key": "waist_natural",
+      "label": "Талия (одежда)",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Самое узкое место",
+      "posture": "Стоя. Отдельная метрика — не смешивать с «Талия (WHO)»",
+      "show_in_cheatsheet": true
+    }
+  ]
+}
