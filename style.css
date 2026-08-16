@@ -354,10 +354,24 @@ body {
   text-transform: uppercase;
 }
 
+/* Вся строка — ссылка в историю замера (T8). Тач-цель не меньше --tap. */
 .cheat-row {
   align-items: center;
   min-height: var(--tap);
   gap: calc(var(--gap) / 2);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cheat-row:active {
+  background: var(--bg);
+}
+
+@media (hover: hover) {
+  .cheat-row:hover {
+    background: var(--bg);
+  }
 }
 
 .cheat-row__info {
@@ -397,4 +411,16 @@ body {
 .cheat-notice__link {
   margin-top: calc(var(--gap) / 2);
   text-decoration: none;
+}
+
+/* Кнопка «Обновить» под секциями и в карточке ошибки: без неё после сбоя
+   данные не перезапросить иначе как перезагрузкой страницы. */
+.cheat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+}
+
+.card .cheat-actions {
+  margin-top: var(--gap);
 }

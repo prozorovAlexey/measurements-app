@@ -1,4 +1,4 @@
-// Шпаргалка — стартовый экран (§7.1 спеки, T4).
+// Шпаргалка — стартовый экран (§7.1 спеки, T4, контракт §2).
 //
 // Сквозное правило контракта (§13): устаревшие значения не скрываются никогда.
 // Замер старше frequency_days x 2 получает приглушённую дату (.date--stale)
@@ -7,13 +7,20 @@
 // одежды замер полугодовой давности полезнее пустого места.
 //
 // Порядок работы (§8 спеки — отрисовка < 1 с при холодном старте офлайн):
-//   1) рисуем из кэша store.js сразу, не дожидаясь сети;
-//   2) параллельно читаем index.json из приватного repo B;
+//   1) локальный каталог + кэш index.json из store.js — экран рисуется сразу;
+//      кэша нет — рисуется полный каркас строк с прочерками, а не пустота;
+//   2) обновление index.json уходит в фон и дорисовывает поверх;
 //   3) сеть не ответила — оставляем нарисованное и объясняем, что случилось
 //      и когда кэш обновлялся.
+// Первый рендер не ждёт сеть ни при каких условиях.
+//
+// repo B приватный, поэтому raw.githubusercontent.com без авторизации данные
+// не отдаёт — читаем только через github.js. Текст у GitHubError уже русский
+// и конкретный (§4 контракта), показываем его как есть.
 
+import { setHeaderStatus } from '../app.js';
+import { readFile, GitHubError } from '../github.js';
 import { getIndexCache, setIndexCache } from '../store.js';
-import { readFile } from '../github.js';
 import { loadCatalog, cheatsheetMeasurements } from '../catalog.js';
 
 export const title = 'Шпаргалка';
@@ -22,384 +29,390 @@ const INDEX_PATH = 'index.json';
 
 // Эти три динамических замера дублируются в «Для покупок» намеренно (§7.1):
 // в магазине они нужны рядом с ростом и длиной рукава.
-export const SHOPPING_EXTRA_KEYS = Object.freeze(['chest', 'hip', 'neck']);
+const SHOPPING_EXTRA_KEYS = Object.freeze(['chest', 'hip', 'neck']);
 
-export const SECTION_TITLES = Object.freeze({
-  shopping: 'Для покупок',
-  dynamic: 'Динамика'
-});
+const UNITS = new Map([['cm', 'см'], ['kg', 'кг']]);
+const DAY_MS = 86400000;
+const DAY_FORMS = Object.freeze(['день', 'дня', 'дней']);
 
 const EMPTY_VALUE = '—'; // тире вместо числа: пустое место подсказывает, что пора мерить
-const NO_DATE_TEXT = 'ещё не измерено';
+const NO_DATE_TEXT = 'нет данных';
 const BAD_DATE_TEXT = 'дата неизвестна'; // значение есть, а дата битая — молчать нельзя
 
-const UNITS = Object.freeze({ cm: 'см', kg: 'кг' });
+// Длиннее в .status шапки не влезает — обрезаем по слову.
+const STATUS_MAX = 40;
 
-const MONTHS = Object.freeze([
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
-]);
+let mountToken = 0;
+let state = null;
 
-const DAY_MS = 86400000;
+// ===== Чистые функции =====================================================
+// Экспортируются ради cheatsheet.selftest.mjs — прецедент utf8ToBase64
+// в github.js (§13 контракта, T2). Приложение зовёт их отсюда же.
 
-// ===== Чистая логика (без DOM, покрыта автотестом) ========================
-
-// Русские числительные: 1 день / 2 дня / 5 дней.
-export function plural(count, one, few, many) {
-  const n = Math.abs(Math.trunc(count));
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
-function parseDayStart(dateStr) {
-  if (typeof dateStr !== 'string') return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+// 'YYYY-MM-DD' (и любой ISO, начинающийся с даты) -> части; мусор -> null.
+function parseISODate(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   const stamp = Date.UTC(year, month - 1, day);
   const probe = new Date(stamp);
   // Отсекаем 2026-02-31 и прочие несуществующие даты.
-  if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+    return null;
+  }
   return { stamp, year, month, day };
 }
 
-// Возраст замера в календарных днях. Считаем по полуночи UTC с обеих сторон,
-// иначе переход на летнее время даёт лишние ±1 день.
-export function ageInDays(dateStr, now) {
-  const parsed = parseDayStart(dateStr);
-  if (!parsed) return null;
-  const reference = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
-  const today = Date.UTC(reference.getFullYear(), reference.getMonth(), reference.getDate());
-  return Math.round((today - parsed.stamp) / DAY_MS);
-}
-
-// Устаревание применимо только к динамическим замерам: статика меряется один
-// раз, и её возраст ничего не значит (frequency_days === null).
-export function isStale(measurement, dateStr, now) {
-  const frequency = measurement?.frequency_days;
-  if (!Number.isFinite(frequency) || frequency <= 0) return false;
-  const age = ageInDays(dateStr, now);
-  if (age === null) return false;
-  // Ровно frequency_days x 2 — ещё не устарело, граница включительно.
-  return age > frequency * 2;
-}
-
-export function formatValue(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return EMPTY_VALUE;
-  const rounded = Math.round(value * 10) / 10;
-  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return text.replace('.', ',');
-}
-
-export function formatUnit(unit) {
-  if (typeof unit !== 'string' || unit.trim() === '') return '';
-  return UNITS[unit] ?? unit;
-}
-
-// Дата замера — везде в одном виде: «14 августа», с годом, если он не текущий.
-export function formatMeasurementDate(dateStr, now) {
-  const parsed = parseDayStart(dateStr);
-  if (!parsed) return NO_DATE_TEXT;
-  const reference = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
-  const text = `${parsed.day} ${MONTHS[parsed.month - 1]}`;
-  return parsed.year === reference.getFullYear() ? text : `${text} ${parsed.year}`;
-}
-
-// Возраст кэша для индикатора состояния данных: «3 дня назад».
-export function formatAge(iso, now) {
-  if (typeof iso !== 'string' || iso.trim() === '') return null;
-  const then = new Date(iso);
-  if (Number.isNaN(then.getTime())) return null;
-  const reference = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
-  const ms = Math.max(0, reference.getTime() - then.getTime());
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} ${plural(minutes, 'минуту', 'минуты', 'минут')} назад`;
-  const hours = Math.floor(ms / 3600000);
-  if (hours < 24) return `${hours} ${plural(hours, 'час', 'часа', 'часов')} назад`;
-  const days = Math.floor(ms / DAY_MS);
-  return `${days} ${plural(days, 'день', 'дня', 'дней')} назад`;
-}
-
-function latestEntry(latest, key) {
-  if (typeof latest !== 'object' || latest === null) return null;
-  const entry = latest[key];
-  if (typeof entry !== 'object' || entry === null) return null;
-  return entry;
-}
-
-// Строка шпаргалки. Строится всегда, даже когда значения нет и когда оно
-// древнее: отсутствие числа — такая же полезная информация, как число.
-export function buildRow(measurement, latest, now) {
-  const entry = latestEntry(latest, measurement.key);
-  const value = typeof entry?.value === 'number' && Number.isFinite(entry.value) ? entry.value : null;
-  const date = typeof entry?.date === 'string' ? entry.date : null;
-  let dateText = formatMeasurementDate(date, now);
-  if (dateText === NO_DATE_TEXT && value !== null) dateText = BAD_DATE_TEXT;
-  return {
-    key: measurement.key,
-    label: typeof measurement.label === 'string' ? measurement.label : measurement.key,
-    value,
-    valueText: formatValue(value),
-    hasValue: value !== null,
-    unitText: value === null ? '' : formatUnit(measurement.unit),
-    date,
-    dateText,
-    stale: isStale(measurement, date, now)
-  };
-}
-
-// Две секции §7.1. Одна и та же запись может попасть в обе — это намеренно.
-// Ни одна строка здесь не отбрасывается: любой замер каталога получает место.
-export function buildSections(measurements, latest, now) {
-  const shopping = [];
-  const dynamic = [];
-  const list = Array.isArray(measurements) ? measurements : [];
-  for (const measurement of list) {
-    if (!measurement || typeof measurement.key !== 'string') continue;
-    const row = buildRow(measurement, latest, now);
-    if (measurement.class === 'static' || SHOPPING_EXTRA_KEYS.includes(measurement.key)) {
-      shopping.push(row);
-    }
-    if (measurement.class === 'dynamic') {
-      dynamic.push(row);
-    }
+// Календарный день как метка полуночи UTC: разница считается в сутках
+// и не плывёт от часового пояса и перехода на летнее время.
+function toDayStamp(value) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
   }
-  return [
-    { id: 'shopping', title: SECTION_TITLES.shopping, rows: shopping },
-    { id: 'dynamic', title: SECTION_TITLES.dynamic, rows: dynamic }
-  ];
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  // Полная метка времени (fetchedAt из store.js) — переводим в местный день:
+  // «обновлено сегодня» считается по календарю пользователя, а не по UTC.
+  if (/\d{2}:\d{2}/.test(text)) {
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+  const parts = parseISODate(text);
+  return parts ? parts.stamp : null;
 }
 
-// Индикатор состояния данных (§7.1). state:
-//   { phase: 'fresh' | 'cache' | 'empty', fetchedAt, error: { kind, message } | null }
-export function statusFor(state, now) {
-  const phase = state?.phase;
-  const error = state?.error ?? null;
-  if (phase === 'fresh') return { text: 'актуально', tone: 'ok' };
-  if (phase === 'cache') {
-    const age = formatAge(state?.fetchedAt, now);
-    return { text: age ? `из кэша, обновлено ${age}` : 'из кэша', tone: 'stale' };
-  }
-  if (error?.kind === 'no-token') {
-    // Первый запуск без токена — это не авария, а нормальное состояние.
-    return { text: 'нет данных, нужен токен', tone: 'stale' };
-  }
-  if (error) return { text: error.message, tone: 'error' };
-  return { text: 'нет данных', tone: 'stale' };
+// Замер устарел, если прошло больше frequency_days x 2 (§7.1).
+// Граница включительная: ровно два срока — ещё свежо.
+// Статика (frequency_days === null) не устаревает никогда.
+export function isStale(dateISO, frequencyDays, today = new Date()) {
+  if (!Number.isFinite(frequencyDays) || frequencyDays <= 0) return false;
+  const measured = toDayStamp(dateISO);
+  const now = toDayStamp(today);
+  if (measured === null || now === null) return false;
+  return Math.round((now - measured) / DAY_MS) > frequencyDays * 2;
 }
 
-// Пояснение на самом экране: в шапку длинный текст не влезает.
-export function noticeFor(state, now, catalogError) {
-  if (catalogError) {
-    return {
-      tone: 'error',
-      heading: 'Каталог замеров не загрузился',
-      text: catalogError.message,
-      link: null
-    };
-  }
-  const error = state?.error ?? null;
-  if (!error) return null;
-
-  const fromCache = state?.phase === 'cache';
-  const age = formatAge(state?.fetchedAt, now);
-  const cacheNote = fromCache
-    ? `Показаны значения из кэша${age ? `, он обновлялся ${age}` : ''}.`
-    : '';
-
-  if (error.kind === 'no-token') {
-    return {
-      tone: 'info',
-      heading: 'Токен GitHub ещё не задан',
-      text: `${error.message} До этого свежие значения подтянуть неоткуда.${cacheNote ? ` ${cacheNote}` : ''}`,
-      link: { href: '#/settings', text: 'Открыть настройки' }
-    };
-  }
-  return {
-    tone: fromCache ? 'warn' : 'error',
-    heading: fromCache ? 'Данные не обновились' : 'Данные не загрузились',
-    text: cacheNote ? `${error.message} ${cacheNote}` : error.message,
-    link: null
-  };
+// Число руками, без toLocaleString: результат обязан совпадать в браузере
+// и в node, где ICU может оказаться урезанным. Хвостовых нулей не бывает —
+// String(86.80) это '86.8'.
+function formatNumber(number) {
+  const rounded = Math.round(number * 100) / 100; // гасим хвосты float
+  return String(rounded).replace('.', ',');
 }
 
-// Из ошибки github.js берём готовый человеческий текст под каждый kind (§4).
-export function toErrorInfo(error) {
-  if (error && typeof error.kind === 'string' && typeof error.message === 'string') {
-    return { kind: error.kind, message: error.message };
+// 86.8, 'cm' -> '86,8 см'. Значения нет -> прочерк.
+export function formatValue(value, unit) {
+  if (typeof value !== 'number' && typeof value !== 'string') return EMPTY_VALUE;
+  if (typeof value === 'string' && value.trim() === '') return EMPTY_VALUE;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return EMPTY_VALUE;
+  const raw = typeof unit === 'string' ? unit.trim() : '';
+  // Незнакомая единица показывается как есть — врать про неё нечего.
+  const suffix = raw === '' ? '' : (UNITS.get(raw) ?? raw);
+  const text = formatNumber(number);
+  return suffix === '' ? text : `${text} ${suffix}`;
+}
+
+// '2026-08-14' -> '14.08.2026'. Мусор -> пустая строка.
+export function formatDate(dateISO) {
+  const parts = parseISODate(dateISO);
+  if (!parts) return '';
+  const day = String(parts.day).padStart(2, '0');
+  const month = String(parts.month).padStart(2, '0');
+  return `${day}.${month}.${parts.year}`;
+}
+
+// Русские числительные: 1 день / 2 дня / 5 дней.
+function pluralDays(count) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return DAY_FORMS[0];
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return DAY_FORMS[1];
+  return DAY_FORMS[2];
+}
+
+// Возраст кэша словами (§7.1: «из кэша, обновлено 3 дня назад»).
+export function describeCacheAge(fetchedAtISO, now = new Date()) {
+  const from = toDayStamp(fetchedAtISO);
+  const to = toDayStamp(now);
+  if (from === null || to === null) return 'Из кэша';
+  const days = Math.round((to - from) / DAY_MS);
+  // Отрицательная разница — часы устройства ушли вперёд и вернулись назад.
+  if (days <= 0) return 'Из кэша, обновлено сегодня';
+  if (days === 1) return 'Из кэша, обновлено вчера';
+  return `Из кэша, обновлено ${days} ${pluralDays(days)} назад`;
+}
+
+// Текст для .status в шапке: она однострочная, CSS обрежет её многоточием
+// по ширине, но обрезка по слову читается лучше обрубка посреди слова.
+export function shortenStatus(text, max = STATUS_MAX) {
+  const value = typeof text === 'string' ? text.trim() : '';
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  // По слову — только если слово не съедает больше половины строки.
+  const head = space > max / 2 ? cut.slice(0, space) : cut;
+  return `${head.replace(/[\s.,;:—-]+$/, '')}…`;
+}
+
+// ===== Разбор данных ======================================================
+
+function errorText(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim() !== '') return error.trim();
+  return 'Не удалось обновить данные.';
+}
+
+function parseIndex(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('index.json на сервере не разбирается как JSON.');
   }
-  if (error instanceof Error && error.message) {
-    return { kind: 'unknown', message: error.message };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('index.json не похож на агрегат из §6.2 спеки.');
   }
-  return { kind: 'unknown', message: 'Неизвестная ошибка загрузки данных.' };
+  return data;
+}
+
+// latest из §6.2 -> Map. Через Map, а не по ключам объекта: в JSON может
+// прилететь ключ вроде '__proto__', и обращение по нему даст не то.
+function latestMap(data) {
+  const map = new Map();
+  const latest = data && typeof data === 'object' ? data.latest : null;
+  if (!latest || typeof latest !== 'object') return map;
+  for (const [key, entry] of Object.entries(latest)) {
+    if (entry && typeof entry === 'object') map.set(key, entry);
+  }
+  return map;
+}
+
+// Порядок обеих секций — строго порядок catalog.json, без пересортировки.
+// Одна и та же запись может попасть в обе секции — это намеренно (§7.1).
+function shoppingList(measurements) {
+  return measurements.filter((item) => item.class === 'static' || SHOPPING_EXTRA_KEYS.includes(item.key));
+}
+
+function dynamicList(measurements) {
+  return measurements.filter((item) => item.class === 'dynamic');
 }
 
 // ===== Отрисовка ==========================================================
 
-let renderToken = 0;
-let view = null;
-let onlineHandler = null;
-let appModule = null;
-
-// app.js импортируется лениво: статический импорт замкнул бы цикл
-// app.js -> screens/cheatsheet.js -> app.js и потребовал бы DOM даже для
-// автотеста чистой логики.
-async function setStatus(status) {
-  try {
-    if (!appModule) appModule = await import('../app.js');
-    appModule.setHeaderStatus(status.text, status.tone);
-  } catch {
-    // Вне приложения (автотест) шапки нет — это не повод падать.
-  }
-}
-
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (text !== undefined && text !== null) node.textContent = text;
   return node;
 }
 
-function renderNotice(notice) {
+function makeButton(text, onClick, disabled) {
+  const button = el('button', 'btn', text);
+  button.type = 'button';
+  button.disabled = Boolean(disabled);
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function buildActions(...nodes) {
+  const wrap = el('div', 'cheat-actions');
+  wrap.append(...nodes);
+  return wrap;
+}
+
+// Значение и единица — отдельными узлами: с вытянутой руки читается число,
+// «см» такого кегля не требует. Единственный источник формата — formatValue,
+// здесь только разрез по пробелу.
+function valueParts(value, unit) {
+  const text = formatValue(value, unit);
+  const space = text.indexOf(' ');
+  if (space === -1) return { number: text, unit: '' };
+  return { number: text.slice(0, space), unit: text.slice(space + 1) };
+}
+
+// Строка строится всегда: и без значения, и с древним. Вся строка целиком —
+// ссылка в историю замера (экран T8), тач-цель задана в .cheat-row.
+function buildRow(measurement, latest, today) {
+  const row = el('a', 'row cheat-row');
+  row.href = `#/history/${encodeURIComponent(measurement.key)}`;
+
+  const info = el('span', 'cheat-row__info');
+  info.append(el('span', 'label cheat-row__name', measurement.label));
+  const date = el('span', 'date');
+
+  const box = el('span', 'cheat-row__value');
+  const parts = valueParts(latest ? latest.value : null, measurement.unit);
+  const value = el('span', 'value', parts.number);
+  box.append(value);
+  if (parts.unit !== '') box.append(el('span', 'cheat-row__unit', parts.unit));
+
+  if (parts.number === EMPTY_VALUE) {
+    // Данных нет — строка всё равно на месте, прятать её нельзя (§13).
+    value.classList.add('value--empty');
+    date.textContent = NO_DATE_TEXT;
+  } else {
+    const text = formatDate(latest.date);
+    date.textContent = text === '' ? BAD_DATE_TEXT : text;
+    // Просрочка помечается только на дате: значение остаётся полноразмерным
+    // и обычного цвета (§13).
+    if (text !== '' && isStale(latest.date, measurement.frequency_days, today)) {
+      date.classList.add('date--stale');
+    }
+  }
+
+  info.append(date);
+  row.append(info, box);
+  return row;
+}
+
+function buildSection(heading, list, latest, today) {
+  const card = el('section', 'card cheat-section');
+  card.append(el('h2', null, heading));
+  for (const measurement of list) {
+    card.append(buildRow(measurement, latest.get(measurement.key) ?? null, today));
+  }
+  return card;
+}
+
+// Полный текст ошибки — карточкой на самом экране: в шапку он не влезает.
+function buildNotice(error, heading) {
   const card = el('section', 'card cheat-notice');
-  card.append(el('h2', null, notice.heading));
-
-  const body = el('p', notice.tone === 'info' ? 'field__hint' : 'warn', notice.text);
-  card.append(body);
-
-  if (notice.link) {
-    const link = el('a', 'btn cheat-notice__link', notice.link.text);
-    link.href = notice.link.href;
+  card.append(el('h2', null, heading));
+  card.append(el('p', 'warn', errorText(error)));
+  if (error instanceof GitHubError && error.kind === 'no-token') {
+    const link = el('a', 'btn cheat-notice__link', 'Открыть настройки');
+    link.href = '#/settings';
     card.append(link);
   }
   return card;
 }
 
-function renderRow(row) {
-  const node = el('div', 'row cheat-row');
+// ===== Состояние экрана ===================================================
 
-  const info = el('div', 'cheat-row__info');
-  info.append(el('span', 'label cheat-row__name', row.label));
-
-  const date = el('span', 'date cheat-row__date', row.dateText);
-  // Приглушаем только цвет даты: строка остаётся на месте и в полном размере.
-  if (row.stale) date.classList.add('date--stale');
-  info.append(date);
-
-  const amount = el('div', 'cheat-row__value');
-  const value = el('span', 'value', row.valueText);
-  if (!row.hasValue) value.classList.add('value--empty');
-  amount.append(value);
-  if (row.unitText) amount.append(el('span', 'cheat-row__unit', row.unitText));
-
-  node.append(info, amount);
-  return node;
+// Ответ, пришедший после ухода с экрана или после нового render(),
+// не должен рисовать в чужой root (§13 контракта, решение T1 про mountToken).
+function outdated(token) {
+  return state === null || state.token !== token;
 }
 
-function renderSection(section) {
-  const card = el('section', 'card cheat-section');
-  card.append(el('h2', null, section.title));
-  for (const row of section.rows) card.append(renderRow(row));
-  return card;
+function applyStatus() {
+  if (state === null) return;
+  if (state.loading) {
+    setHeaderStatus('Обновляю…', null);
+    return;
+  }
+  if (state.error === null) {
+    setHeaderStatus('Актуально', 'ok');
+    return;
+  }
+  // Кэш есть — экран полезен, ошибка ушла в карточку, в шапке возраст данных.
+  if (state.index !== null) {
+    setHeaderStatus(describeCacheAge(state.fetchedAt, new Date()), 'stale');
+    return;
+  }
+  setHeaderStatus(shortenStatus(errorText(state.error)), 'error');
 }
 
-function paint(current) {
-  const now = new Date();
+function paint() {
+  if (state === null) return;
+  const today = new Date();
+  const latest = latestMap(state.index);
   const nodes = [];
 
-  const notice = noticeFor(current.state, now, current.catalogError);
-  if (notice) nodes.push(renderNotice(notice));
+  if (state.error !== null) nodes.push(buildNotice(state.error, 'Данные не обновились'));
+  nodes.push(buildSection('Для покупок', shoppingList(state.measurements), latest, today));
+  nodes.push(buildSection('Динамика', dynamicList(state.measurements), latest, today));
+  // Без кнопки после ошибки нет способа перезапросить, кроме перезагрузки.
+  nodes.push(buildActions(makeButton('Обновить', requestRefresh, state.loading)));
 
-  const latest = current.state.index?.latest ?? null;
-  for (const section of buildSections(current.measurements, latest, now)) {
-    nodes.push(renderSection(section));
-  }
-
-  current.root.replaceChildren(...nodes);
-  setStatus(statusFor(current.state, now));
+  state.root.replaceChildren(...nodes);
+  applyStatus();
 }
 
-function cachedState() {
-  const cached = getIndexCache();
-  if (!cached) return { phase: 'empty', index: null, fetchedAt: null, error: null };
-  return { phase: 'cache', index: cached.data, fetchedAt: cached.fetchedAt, error: null };
-}
-
-async function refresh(current, token) {
-  if (token !== renderToken) return;
+async function runRefresh(token) {
   try {
     const file = await readFile(INDEX_PATH);
-    const data = JSON.parse(file.content);
-    if (token !== renderToken) return;
-    const entry = setIndexCache(data);
-    current.state = {
-      phase: 'fresh',
-      index: data,
-      fetchedAt: entry?.fetchedAt ?? new Date().toISOString(),
-      error: null
-    };
+    const data = parseIndex(file.content);
+    if (outdated(token)) return;
+    const saved = setIndexCache(data);
+    state.index = data;
+    state.fetchedAt = saved ? saved.fetchedAt : new Date().toISOString();
+    state.error = null;
   } catch (error) {
-    if (token !== renderToken) return;
-    const info = error instanceof SyntaxError
-      ? { kind: 'bad-json', message: 'index.json на сервере не разбирается как JSON.' }
-      : toErrorInfo(error);
+    if (outdated(token)) return;
     // Кэш остаётся ровно таким, каким был: нарисованное не стираем.
-    current.state = { ...current.state, error: info };
+    state.error = error;
   }
-  paint(current);
+  if (outdated(token)) return;
+  state.loading = false;
+  paint();
 }
 
-export async function render(root, params) {
-  const token = ++renderToken;
-  detachOnline(); // повторный render без destroy не должен копить слушателей
+// Кнопка «Обновить» и событие online. Повторный вызов во время запроса
+// игнорируется: кнопка в это время и так disabled.
+function requestRefresh() {
+  if (state === null || state.loading) return;
+  state.loading = true;
+  paint();
+  void runRefresh(state.token);
+}
 
-  let measurements = [];
-  let catalogError = null;
+function handleOnline() {
+  requestRefresh();
+}
+
+// ===== Контракт экрана ====================================================
+
+export async function render(root, params) {
+  const token = ++mountToken;
+  // Повторный render без destroy не должен копить слушателей.
+  window.removeEventListener('online', handleOnline);
+  state = null;
+
+  let measurements;
   try {
     await loadCatalog();
     measurements = cheatsheetMeasurements();
   } catch (error) {
-    catalogError = error instanceof Error ? error : new Error(String(error));
+    // Пока грузился каталог, мог случиться переход на другой экран.
+    if (token !== mountToken) return;
+    const card = buildNotice(error, 'Каталог замеров не загрузился');
+    card.append(buildActions(makeButton('Повторить', () => {
+      void render(root, params);
+    })));
+    root.replaceChildren(card);
+    setHeaderStatus(shortenStatus(errorText(error)), 'error');
+    return;
   }
-  // Пока грузился каталог, мог случиться переход на другой экран.
-  if (token !== renderToken) return;
+  if (token !== mountToken) return;
 
-  const current = { root, measurements, catalogError, state: cachedState() };
-  view = current;
+  const cache = getIndexCache();
+  state = {
+    token,
+    root,
+    measurements,
+    index: cache ? cache.data : null,
+    fetchedAt: cache ? cache.fetchedAt : null,
+    error: null,
+    loading: true
+  };
 
-  // Первая отрисовка — синхронно из кэша, до любого сетевого запроса.
-  paint(current);
-
-  // Сеть не блокирует render(): экран уже на месте, обновление придёт позже.
-  refresh(current, token).catch(() => {
-    // refresh сам разбирает свои ошибки; сюда попадать нечему.
-  });
-
-  if (typeof window !== 'undefined') {
-    onlineHandler = () => {
-      if (view === current && token === renderToken) refresh(current, token).catch(() => {});
-    };
-    window.addEventListener('online', onlineHandler);
-  }
-}
-
-function detachOnline() {
-  if (onlineHandler && typeof window !== 'undefined') {
-    window.removeEventListener('online', onlineHandler);
-  }
-  onlineHandler = null;
+  // Первая отрисовка — до любого сетевого запроса (§8 спеки).
+  paint();
+  window.addEventListener('online', handleOnline);
+  void runRefresh(token);
 }
 
 export function destroy() {
-  // Смена токена гасит ответ сети, который придёт уже после ухода с экрана.
-  renderToken += 1;
-  view = null;
-  detachOnline();
+  window.removeEventListener('online', handleOnline);
+  // Токен растёт и здесь: незавершённый runRefresh обязан увидеть отмену,
+  // даже если следующий экран ещё не смонтирован.
+  mountToken += 1;
+  state = null;
 }
