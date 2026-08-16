@@ -424,3 +424,158 @@ body {
 .card .cheat-actions {
   margin-top: var(--gap);
 }
+
+/* Ввод сессии (T5, §7.2)
+   Текст протокола стоит над полями и виден всегда: из-за неоднозначности
+   «где именно мерили» и заведён весь проект (§1 спеки). Ни сворачивания,
+   ни подсказки по тапу здесь быть не должно. */
+
+/* Блоки замеров лежат в своей обёртке, поэтому промежуток задаётся ей:
+   .screen раздаёт gap только собственным детям. */
+.entry-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.entry-rules {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.entry-rules li + li {
+  margin-top: 0.2rem;
+}
+
+.entry-modes {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Галочка и радиокнопка вместе с подписью — одна тач-цель не меньше --tap. */
+.entry-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: var(--tap);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.entry-choice input {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.entry-picker {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-picker:not(:empty) {
+  margin-top: calc(var(--gap) / 2);
+  padding-top: calc(var(--gap) / 2);
+  border-top: 1px solid var(--border);
+}
+
+.entry-block h2 {
+  margin-bottom: calc(var(--gap) / 3);
+}
+
+.entry-block__unit {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 400;
+}
+
+.entry-protocol {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.entry-reps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  margin-top: calc(var(--gap) / 2);
+}
+
+/* Три поля повторов в строку на телефоне, перенос — только если не влезли. */
+.entry-rep {
+  flex: 1 1 5rem;
+  min-width: 4.5rem;
+}
+
+.entry-median {
+  margin: calc(var(--gap) / 2) 0 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Медианы ещё нет — та же строка приглушённым цветом, чтобы место под неё
+   не прыгало при вводе. */
+.entry-median--empty {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.entry-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+}
+
+.entry-warnings:not(:empty) {
+  margin-top: calc(var(--gap) / 2);
+}
+
+/* Подтверждение отклонения — в рамке того же цвета, что и предупреждение:
+   пока галочка не стоит, сохранение заблокировано (§7.2). */
+.entry-confirm {
+  padding: 0 calc(var(--gap) / 1.5);
+  border: 1px solid var(--warn);
+  border-radius: calc(var(--radius) / 1.5);
+  color: var(--warn);
+}
+
+.entry-note {
+  margin-top: var(--gap);
+}
+
+.entry-datetime {
+  display: flex;
+  gap: calc(var(--gap) / 2);
+}
+
+.entry-datetime .field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.entry-conditions {
+  display: flex;
+  flex-direction: column;
+  margin: calc(var(--gap) / 2) 0;
+}
+
+.entry-save .btn {
+  width: 100%;
+}
+
+.entry-messages {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+}
+
+.entry-messages:not(:empty) {
+  margin-top: var(--gap);
+}

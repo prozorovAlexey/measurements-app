@@ -16,9 +16,14 @@ import { getCatalogCache, setCatalogCache } from './store.js';
 
 const CATALOG_URL = './catalog.json';
 
+// Версия методики из корня catalog.json (§6.3). Ею штампуется каждая запись
+// сессии: без неё нельзя понять, с чем значение вообще сравнимо (§5 спеки).
+const DEFAULT_PROTOCOL_VERSION = 1;
+
 let pending = null; // промис загрузки, пока она идёт или уже удалась
 let entries = []; // порядок — строго как в файле, пересортировки нет нигде
 let index = new Map();
+let rootVersion = DEFAULT_PROTOCOL_VERSION;
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
@@ -57,9 +62,11 @@ function normalize(raw) {
   return result;
 }
 
-function apply(list) {
+function apply(list, raw) {
   entries = Object.freeze(list);
   index = new Map(list.map((item) => [item.key, item]));
+  const version = raw ? raw.protocol_version : null;
+  rootVersion = Number.isInteger(version) && version >= 1 ? version : DEFAULT_PROTOCOL_VERSION;
 }
 
 async function fetchCatalog() {
@@ -77,15 +84,18 @@ async function fetchCatalog() {
   if (list.length > 0) {
     setCatalogCache(raw);
   } else {
+    // Версию берём из того же источника, что и список: иначе запись сессии
+    // ушла бы с версией по умолчанию, не имеющей отношения к данным.
     const cached = getCatalogCache();
-    list = normalize(cached ? cached.data : null);
+    raw = cached ? cached.data : null;
+    list = normalize(raw);
   }
 
   if (list.length === 0) {
     throw new Error('Каталог замеров не загрузился. Проверь подключение и повтори.');
   }
 
-  apply(list);
+  apply(list, raw);
   return list;
 }
 
@@ -120,4 +130,12 @@ export function staticMeasurements() {
 
 export function cheatsheetMeasurements() {
   return entries.filter((item) => item.show_in_cheatsheet);
+}
+
+// Версия методики для штампа записей сессии (§6.1). До загрузки каталога —
+// значение по умолчанию: экран ввода всё равно ждёт loadCatalog().
+// Когда методика отдельного замера начнёт версионироваться (§5 спеки),
+// поле появится у записи каталога и приоритет будет у него.
+export function protocolVersion() {
+  return rootVersion;
 }
