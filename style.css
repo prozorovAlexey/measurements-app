@@ -579,3 +579,73 @@ body {
 .entry-messages:not(:empty) {
   margin-top: var(--gap);
 }
+
+/* Офлайн-очередь в настройках (T6, §7.4)
+   Неотправленное задание видно целиком: путь, время, статус и причина.
+   Прятать его нельзя — это единственное место, где заметно, что сессия
+   ещё не доехала до repo B. */
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+  margin: var(--gap) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-job {
+  padding: calc(var(--gap) / 1.5);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 1.5);
+}
+
+.queue-job p {
+  margin: 0 0 0.2rem;
+}
+
+/* Имя файла — моноширинным: по нему сверяются с содержимым репозитория. */
+.queue-job__path {
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+
+.queue-job__when {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.queue-job__state {
+  font-weight: 600;
+}
+
+.queue-job__state--pending {
+  color: var(--warn);
+}
+
+.queue-job__state--sending {
+  color: var(--accent);
+}
+
+.queue-job__state--failed {
+  color: var(--danger);
+}
+
+.queue-empty {
+  margin: var(--gap) 0 0;
+  color: var(--muted);
+}
+
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  margin-top: var(--gap);
+}
+
+.queue-actions .warn {
+  flex: 1 1 100%;
+  margin: 0;
+}

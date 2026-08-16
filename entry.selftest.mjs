@@ -18,6 +18,11 @@
 // value, checked, disabled и события input/change. Код скопирован намеренно:
 // общий модуль-хелпер связал бы между собой тесты разных задач.
 //
+// IndexedDB тоже подставлен: с T6 сохранение идёт через очередь, и без
+// хранилища queue.js уходит на запасной бэкенд в памяти — то есть проверялась
+// бы редкая ветка «браузер не дал сохранить на диск», а не основная.
+// Заглушка урезана до методов, которыми пользуется queue.js.
+//
 // Каталог подменяется фикстурой с "protocol_version": 7 — в файле на диске
 // версия 1, и она же значение по умолчанию в catalog.js. Только при
 // подменённой версии видно, что штамп записи действительно приехал
@@ -26,6 +31,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 
 // ===== Мини-DOM ===========================================================
 
@@ -146,6 +152,54 @@ globalThis.document = {
 };
 globalThis.location = { hash: '#/entry' };
 
+// ===== Заглушка IndexedDB =================================================
+
+function idbRequest(run) {
+  const request = { onsuccess: null, onerror: null, result: undefined, error: null };
+  queueMicrotask(() => {
+    request.result = run();
+    if (request.onsuccess) request.onsuccess({ target: request });
+  });
+  return request;
+}
+
+const dbRows = new Map();
+let dbNextKey = 1;
+
+function idbStore() {
+  return {
+    add: (record) => idbRequest(() => {
+      const id = dbNextKey;
+      dbNextKey += 1;
+      dbRows.set(id, { ...record, id });
+      return id;
+    }),
+    put: (record) => idbRequest(() => {
+      dbRows.set(record.id, { ...record });
+      return record.id;
+    }),
+    delete: (id) => idbRequest(() => { dbRows.delete(id); }),
+    getAll: () => idbRequest(() => Array.from(dbRows.keys()).sort((a, b) => a - b).map((id) => ({ ...dbRows.get(id) })))
+  };
+}
+
+globalThis.indexedDB = {
+  open() {
+    const stores = new Set();
+    const db = {
+      objectStoreNames: { contains: (id) => stores.has(id) },
+      createObjectStore: (id) => { stores.add(id); return idbStore(); },
+      transaction: () => ({ objectStore: idbStore })
+    };
+    const request = { onsuccess: null, onerror: null, onupgradeneeded: null, result: db };
+    setTimeout(() => {
+      if (request.onupgradeneeded) request.onupgradeneeded({ target: request });
+      if (request.onsuccess) request.onsuccess({ target: request });
+    }, 0);
+    return request;
+  }
+};
+
 const storage = new Map();
 
 globalThis.localStorage = {
@@ -194,6 +248,12 @@ function failureReply(status, body = '') {
   };
 }
 
+// git-хэш содержимого — то же, что GitHub кладёт в поле sha листинга.
+function gitSha(content) {
+  const bytes = Buffer.from(content, 'utf8');
+  return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+}
+
 // Contents API отдаёт файл в base64 — github.js разворачивает его сам.
 function fileEnvelope(data) {
   return {
@@ -218,7 +278,11 @@ globalThis.fetch = async (url, init = {}) => {
   if (method === 'PUT') {
     if (putReply.kind === 'offline') throw new TypeError('сети нет (заглушка теста)');
     if (putReply.kind === 'status') return failureReply(putReply.status, putReply.body ?? '');
-    return jsonReply({ content: { sha: 'new-sha', path }, commit: { sha: 'commit-sha' } });
+    // sha настоящий, как у GitHub: по нему очередь узнаёт содержимое,
+    // которое уже записано, и не создаёт дубль сессии (T6).
+    const sha = gitSha(Buffer.from(JSON.parse(init.body).content, 'base64').toString('utf8'));
+    dataFiles.push({ name: path.split('/').pop(), sha });
+    return jsonReply({ content: { sha, path }, commit: { sha: 'commit-sha' } });
   }
   if (path === INDEX_PATH) {
     if (indexReply.kind === 'offline') throw new TypeError('сети нет (заглушка теста)');
@@ -226,8 +290,8 @@ globalThis.fetch = async (url, init = {}) => {
     return jsonReply(fileEnvelope(indexReply.body));
   }
   if (path === 'data') {
-    return jsonReply(dataFiles.map((name) => ({
-      type: 'file', name, path: `data/${name}`, sha: `sha-${name}`, size: 10
+    return jsonReply(dataFiles.map((file) => ({
+      type: 'file', name: file.name, path: `data/${file.name}`, sha: file.sha, size: 10
     })));
   }
   throw new Error(`неожиданный запрос к GitHub: ${method} ${path}`);
@@ -236,6 +300,7 @@ globalThis.fetch = async (url, init = {}) => {
 const entry = await import('./screens/entry.js');
 const catalog = await import('./catalog.js');
 const store = await import('./store.js');
+const queue = await import('./queue.js');
 
 let passed = 0;
 let failed = 0;
@@ -269,8 +334,9 @@ const INDEX_NEAR = indexWith({ waist_who: { value: 87, date: '2026-08-01', proto
 const INDEX_FAR = indexWith({ waist_who: { value: 80, date: '2026-08-01', protocol_version: 7 } });
 
 // Фоновое обновление и сохранение уходят в микрозадачи — ждём макрозадачей.
-async function flush() {
-  for (let i = 0; i < 4; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+// С T6 цепочка длиннее: очередь, отправка, повторное чтение очереди.
+async function settle() {
+  for (let i = 0; i < 10; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 
 async function renderScreen(options = {}) {
@@ -283,6 +349,9 @@ async function renderScreen(options = {}) {
   } = options;
 
   entry.destroy(); // гасим предыдущий экран: поздний ответ не должен дорисовать чужой root
+  // Очередь переживает экран — между тестами её надо опустошать вручную,
+  // иначе застрявшее задание уедет вместе со следующей сессией.
+  for (const job of await queue.listJobs()) await queue.removeJob(job.id);
   storage.clear();
   githubCalls.length = 0;
   toastHost.replaceChildren();
@@ -293,11 +362,11 @@ async function renderScreen(options = {}) {
   }
   indexReply = github;
   putReply = put;
-  dataFiles = files;
+  dataFiles = files.map((name) => ({ name, sha: `sha-${name}` }));
 
   const root = createElement('div');
   await entry.render(root, {});
-  await flush();
+  await settle();
   return root;
 }
 
@@ -394,7 +463,7 @@ function fillReps(block, values) {
 
 async function clickSave(root) {
   saveButton(root).dispatch('click');
-  await flush();
+  await settle();
 }
 
 function putCall() {
@@ -737,41 +806,78 @@ await step('§7.2: успех — уведомление про задержку
   assert.equal(globalThis.location.hash, '#/', 'перехода на шпаргалку не случилось');
 });
 
-await step('провал записи не очищает форму и показывает текст ошибки', async () => {
-  const root = await renderScreen({
-    index: INDEX_NEAR,
-    put: { kind: 'status', status: 403 }
-  });
+await step('T6: нет сети — сессия ложится в очередь, а не теряется', async () => {
+  const root = await renderScreen({ index: INDEX_NEAR, put: { kind: 'offline' } });
   const block = blockOf(root, 'waist_who');
   fillReps(block, ['86,5', '87,0', '86,8']);
   typeInto(noteOf(block), 'после душа');
   await clickSave(root);
 
-  // Форма на месте целиком: значения, медиана, заметка, все блоки.
-  assert.equal(blocksOf(root).length, 10);
-  assert.deepEqual(repsOf(blockOf(root, 'waist_who')).map((input) => input.value), ['86,5', '87,0', '86,8']);
-  assert.equal(noteOf(blockOf(root, 'waist_who')).value, 'после душа');
-  assert.equal(medianOf(blockOf(root, 'waist_who')).textContent, 'Медиана: 86,8 см');
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1, 'сессия не доехала ни до repo B, ни до очереди');
+  assert.equal(jobs[0].status, 'pending');
+  assert.equal(jobs[0].lastError, 'Нет сети.');
+  const session = JSON.parse(jobs[0].content);
+  assert.equal(session.entries[0].value, 86.8, 'в очередь легло не то значение');
+  assert.equal(session.entries[0].note, 'после душа');
 
-  // Текст GitHubError показан как есть, кнопка снова доступна для повтора.
-  assert.ok(messagesText(root).includes('У токена нет прав на этот репозиторий.'), messagesText(root));
-  assert.equal(saveButton(root).disabled, false);
-  assert.equal(globalThis.location.hash, '#/entry', 'ушли с экрана, потеряв форму');
-
-  // Повторная попытка при живой сети дописывает ту же сессию.
-  putReply = { kind: 'ok' };
-  await clickSave(root);
-  assert.equal(savedSession().entries[0].value, 86.8);
-  assert.equal(globalThis.location.hash, '#/');
+  // Пользователю сказали и про причину, и про то, что запись не пропала.
+  const texts = toastHost.children.map((node) => node.textContent);
+  assert.equal(texts.length, 1, 'уведомления об очереди нет');
+  assert.ok(texts[0].includes('Нет сети.'), texts[0]);
+  assert.ok(texts[0].includes('очереди'), texts[0]);
+  assert.equal(globalThis.location.hash, '#/', 'экран ввода не отпустил: сессия уже сохранена');
 });
 
-await step('нет сети при записи — форма цела, сообщение конкретное', async () => {
-  const root = await renderScreen({ index: INDEX_NEAR, put: { kind: 'offline' } });
+await step('T6: сеть вернулась — очередь дошлёт ту же сессию без повторного ввода', async () => {
+  putReply = { kind: 'ok' };
+  const result = await queue.flush();
+
+  assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
+  assert.equal(savedSession().entries[0].value, 86.8);
+  assert.equal(putCall().path, `data/${entry.todayISO()}.json`);
+  assert.deepEqual(await queue.listJobs(), []);
+});
+
+await step('T6: провал по вине токена — очередь помечает задание failed', async () => {
+  const root = await renderScreen({
+    index: INDEX_NEAR,
+    put: { kind: 'status', status: 403 }
+  });
   fillReps(blockOf(root, 'waist_who'), ['86,5', '87,0', '86,8']);
   await clickSave(root);
 
-  assert.ok(messagesText(root).includes('Нет сети.'), messagesText(root));
-  assert.deepEqual(repsOf(blockOf(root, 'waist_who')).map((input) => input.value), ['86,5', '87,0', '86,8']);
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].status, 'failed', 'нет прав — само не рассосётся');
+  assert.equal(jobs[0].lastError, 'У токена нет прав на этот репозиторий.');
+
+  const texts = toastHost.children.map((node) => node.textContent);
+  assert.ok(texts[0].includes('У токена нет прав на этот репозиторий.'), texts[0]);
+  assert.ok(texts[0].includes('Настройках'), `не сказано, где смотреть очередь: ${texts[0]}`);
+});
+
+await step('T6: тексты очереди — на русском и с причиной', () => {
+  const pending = entry.queuedText({ status: 'pending', lastError: 'Нет сети.' });
+  assert.ok(pending.startsWith('Нет сети.'), pending);
+  assert.ok(pending.includes('очереди'), pending);
+
+  const failed = entry.queuedText({ status: 'failed', lastError: 'Токен не задан. Открой Настройки и вставь PAT.' });
+  assert.ok(failed.includes('Токен не задан.'), failed);
+  assert.ok(failed.includes('Настройках'), failed);
+
+  for (const text of [pending, failed]) assert.match(text, /[а-яё]/i, `текст не русский: ${text}`);
+});
+
+await step('T6: пока сессия сохраняется, второе нажатие ничего не делает', async () => {
+  const root = await renderScreen({ index: INDEX_NEAR, put: { kind: 'offline' } });
+  fillReps(blockOf(root, 'waist_who'), ['86,5', '87,0', '86,8']);
+  // Оба нажатия — до того, как первое досчиталось: защита от двойного тапа.
+  saveButton(root).dispatch('click');
+  saveButton(root).dispatch('click');
+  await settle();
+
+  assert.equal((await queue.listJobs()).length, 1, 'двойной тап поставил в очередь два задания');
 });
 
 await step('пустая сессия не уходит в сеть, а объясняет, чего не хватает', async () => {
@@ -795,7 +901,9 @@ const CODE = SOURCE.split('\n').filter((line) => !line.trim().startsWith('//')).
 
 await step('чек-лист §10: в коде экрана нет ни одного пути к правке файла сессии', () => {
   assert.ok(!/\bsha\b/i.test(CODE), 'в коде появилось sha — это путь к перезаписи существующего файла');
-  assert.equal((CODE.match(/writeFile\(/g) ?? []).length, 1, 'записей больше одной');
+  // С T6 экран вообще не пишет в repo B: единственный writeFile проекта
+  // живёт в queue.js, и там же его сторожит queue.selftest.mjs.
+  assert.equal((CODE.match(/writeFile\(/g) ?? []).length, 0, 'экран снова пишет в repo B мимо очереди');
   assert.equal((CODE.match(/readFile\(/g) ?? []).length, 1, 'экран читает что-то ещё, кроме index.json');
   assert.ok(CODE.includes('readFile(INDEX_PATH)'), 'единственное чтение — не index.json');
   assert.ok(!/readFileOrNull/.test(CODE));
@@ -805,7 +913,7 @@ await step('§0: экран не знает про localStorage, innerHTML и в
   assert.ok(!/localStorage/.test(SOURCE), 'localStorage живёт только в store.js (§3 контракта)');
   assert.ok(!/innerHTML|insertAdjacentHTML|document\.write/.test(SOURCE), 'разметка строкой');
   assert.ok(!/https?:\/\//.test(CODE), 'внешний адрес в коде экрана');
-  assert.ok(/\/\/ T6:/.test(SOURCE), 'нет якоря T6 в обработке ошибки записи');
+  assert.ok(!/indexedDB/.test(SOURCE), 'IndexedDB живёт только в queue.js (контракт §7)');
 });
 
 await step('CSS: каждый класс экрана описан в style.css', async () => {

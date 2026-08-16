@@ -6,14 +6,16 @@
 // и не прячутся ни под «подробности», ни под всплывающую подсказку.
 //
 // Файл сессии иммутабелен (§6.1, чек-лист §10). В этом файле нет ни чтения
-// существующей сессии, ни sha: writeFile зовётся только без него, то есть
-// физически способен лишь создать новый файл. Появится sha — появится
-// и путь к правке истории, поэтому его здесь быть не должно.
+// существующей сессии, ни записи вообще: единственный writeFile проекта
+// живёт в queue.js и зовётся без sha, то есть физически способен лишь
+// создать новый файл. Появится sha — появится и путь к правке истории.
 //
-// Форма переживает провал записи: пятнадцать минут возни с сантиметровой
-// лентой нельзя терять из-за пропавшей сети. Ошибка показывается текстом
-// рядом с кнопкой, значения остаются в полях, повторное нажатие «Сохранить»
-// шлёт ту же сессию заново.
+// Сессия не теряется из-за пропавшей сети: пятнадцать минут возни
+// с сантиметровой лентой стоят дороже одного запроса. «Сохранить» кладёт
+// собранный файл в очередь (T6, queue.js) и только потом пробует отправить.
+// Доехало — уведомление и переход на шпаргалку; не доехало — сессия ждёт
+// в IndexedDB, а экран говорит, что именно мешает. Сети при этом экран
+// не касается вовсе: и запись, и подбор имени файла живут в queue.js.
 //
 // Перерисовка точечная, а не replaceChildren на весь экран, как в шпаргалке:
 // полный перерендер на каждое нажатие клавиши уносил бы фокус и каретку
@@ -27,7 +29,8 @@
 // это осознанное поведение, а не пропущенная ошибка.
 
 import { navigate, toast } from '../app.js';
-import { GitHubError, listFiles, readFile, writeFile } from '../github.js';
+import { readFile } from '../github.js';
+import { enqueue, flush, isPersistent, listJobs } from '../queue.js';
 import { getIndexCache, setIndexCache } from '../store.js';
 import { getMeasurement, loadCatalog, protocolVersion } from '../catalog.js';
 import { buildSession, median, sessionFileName, validateReps } from '../session.js';
@@ -344,10 +347,11 @@ function updateSave() {
 
   const nodes = [];
   if (state.error !== null) {
-    // Текст GitHubError уже русский и конкретный (§4 контракта) —
+    // Текст ошибки очереди уже русский и конкретный (§4 контракта) —
     // показываем как есть.
     nodes.push(el('p', 'warn', errorText(state.error)));
-    if (state.error instanceof GitHubError && state.error.kind === 'no-token') {
+    if (state.queued) {
+      // Состояние очереди и кнопка «отправить сейчас» живут в настройках (§7.4).
       const link = el('a', 'btn', 'Открыть настройки');
       link.href = '#/settings';
       nodes.push(link);
@@ -544,10 +548,22 @@ function collectEntries() {
   return list;
 }
 
+// «В очереди» без причины выглядит как проглоченная ошибка, поэтому текст
+// всегда называет, что именно помешало отправке. Экспортируется ради
+// entry.selftest.mjs (прецедент §13 контракта).
+export function queuedText(job) {
+  const reason = typeof job.lastError === 'string' ? job.lastError.trim() : '';
+  if (job.status === 'failed') {
+    return `Сессия в очереди, отправить мешает вот что: ${reason} Очередь — в Настройках.`;
+  }
+  return `${reason} Сессия в очереди — отправлю, когда появится связь.`.trim();
+}
+
 async function save() {
   if (state === null || state.saving) return;
   const token = state.token;
   state.error = null;
+  state.queued = false;
 
   let session;
   try {
@@ -573,30 +589,52 @@ async function save() {
   state.saving = true;
   updateSave();
 
+  let id;
   try {
-    // Имя занимаем по фактическому содержимому data/: вторая сессия
-    // за день уезжает в '--2' (§6.1).
-    const files = await listFiles(DATA_DIR);
-    const name = sessionFileName(session.date, files.map((file) => file.name));
-    // sha не передаётся никогда: файл сессии всегда новый. Это и есть
-    // техническая гарантия иммутабельности из чек-листа §10.
-    await writeFile(`${DATA_DIR}/${name}`, JSON.stringify(session, null, 2), {
+    // Сначала диск, потом сеть: до этой строки сессия существует только
+    // в полях формы, и её теряет любой сбой (T6).
+    id = await enqueue({
+      // Имя предварительное: свободное подберёт queue.js в момент отправки,
+      // потому что за время ожидания сети тот же день мог записать другой
+      // телефон (§6.1).
+      path: `${DATA_DIR}/${sessionFileName(session.date, [])}`,
+      content: JSON.stringify(session, null, 2),
       message: `Сессия ${session.date} ${session.time}`
     });
-    if (outdated(token)) return;
-    toast(SAVED_TEXT, 'ok');
-    navigate('#/');
   } catch (error) {
-    // T6: сюда встраивается офлайн-очередь. Вместо показа ошибки (или сразу
-    // после неё) сессия кладётся в queue.js — enqueue({ path, content,
-    // message }) со статусом «ожидает отправки», flush() дошлёт её при
-    // появлении сети, а экран сообщает, что запись поставлена в очередь.
-    // Форма при этом остаётся заполненной до подтверждения записи.
+    // Очередь недоступна целиком — форму не трогаем, она единственная копия.
     if (outdated(token)) return;
     state.saving = false;
     state.error = error;
     updateSave();
+    return;
   }
+
+  await flush();
+  if (outdated(token)) return;
+  // Задания больше нет в очереди — значит, GitHub подтвердил запись.
+  const job = (await listJobs()).find((item) => item.id === id);
+  if (outdated(token)) return;
+
+  if (!job) {
+    toast(SAVED_TEXT, 'ok');
+    navigate('#/');
+    return;
+  }
+
+  if (!isPersistent()) {
+    // IndexedDB нет (приватный режим): очередь живёт до закрытия вкладки.
+    // Обещать «отправлю позже» тут нельзя, и форму бросать тоже — она
+    // остаётся второй копией сессии.
+    state.saving = false;
+    state.queued = true;
+    state.error = new Error(`${job.lastError ?? ''} Сессия в очереди, но браузер не дал сохранить её на диск — не закрывай вкладку, пока она не уйдёт.`.trim());
+    updateSave();
+    return;
+  }
+
+  toast(queuedText(job), 'stale');
+  navigate('#/');
 }
 
 // ===== Контракт экрана ====================================================
@@ -638,6 +676,7 @@ export async function render(root, params) {
     indexError: null,
     saving: false,
     error: null,
+    queued: false,
     blocks: new Map(),
     nodes: {}
   };

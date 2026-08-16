@@ -2,6 +2,7 @@
 // Экраны грузятся динамическим import() — каркас не тянет их код заранее.
 
 import { bumpCheatsheetOpens } from './store.js';
+import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
   cheatsheet: () => import('./screens/cheatsheet.js'),
@@ -196,9 +197,32 @@ window.addEventListener('unhandledrejection', (event) => {
   showFailure('Что-то пошло не так', describeError(event.reason));
 });
 
+// --- Офлайн-очередь (T6) --------------------------------------------------
+
+// Досылка при старте и при появлении сети (§9 спеки, T6). Пустая очередь
+// сеть не трогает: холодный старт и так занят загрузкой шпаргалки.
+// Про неудачу молчим — она видна в настройках, а всплывающее уведомление
+// на каждом мигании связи только мешало бы.
+async function flushQueue() {
+  let jobs;
+  try {
+    jobs = await listJobs();
+  } catch {
+    return; // хранилище очереди недоступно — приложению это не мешает
+  }
+  if (jobs.length === 0) return;
+  const { sent } = await flush();
+  if (sent > 0) toast(`Из очереди отправлено: ${sent}`, 'ok');
+}
+
+window.addEventListener('online', () => {
+  void flushQueue();
+});
+
 // --- Старт ---------------------------------------------------------------
 
 window.addEventListener('hashchange', router);
 router();
+void flushQueue();
 
 // T7: регистрация service worker
