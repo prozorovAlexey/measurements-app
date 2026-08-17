@@ -484,7 +484,7 @@ async function renderScreen(options = {}) {
     cache = null,
     fetchedAt = daysAgoISO(3),
     github = { kind: 'ok', body: FULL_INDEX },
-    token = 'ghp_fixture'
+    token = 'github_pat_fixture'
   } = options;
 
   cheat.destroy(); // гасим предыдущий экран: поздний ответ сети не должен дорисовать чужой root

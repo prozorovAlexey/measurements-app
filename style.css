@@ -649,3 +649,104 @@ body {
   flex: 1 1 100%;
   margin: 0;
 }
+
+/* История замера (T8, §7.3) */
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 4.5rem;
+  margin: var(--gap) 0;
+  overflow: visible;
+}
+
+.sparkline__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Прошлая методика не соединяется с текущей и отличается пунктиром. */
+.sparkline__line--previous {
+  stroke: var(--muted);
+  stroke-dasharray: 5 4;
+}
+
+.history-legend,
+.history-chart .field__hint {
+  margin: calc(var(--gap) / 2) 0 0;
+}
+
+.history-empty {
+  margin: var(--gap) 0 0;
+  color: var(--muted);
+}
+
+.history-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.history-table {
+  width: 100%;
+  min-width: 32rem;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-table th,
+.history-table td {
+  padding: calc(var(--gap) / 1.5) calc(var(--gap) / 2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.history-table th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.history-table__when,
+.history-table__amount,
+.history-table__protocol {
+  white-space: nowrap;
+}
+
+.history-table__reps {
+  min-width: 9rem;
+}
+
+.history-table__time,
+.history-table__note {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+}
+
+.history-protocol-break td {
+  border-top: 2px dashed var(--muted);
+}
+
+/* Настройки T8 (§7.4) */
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  margin-top: var(--gap);
+}
+
+.settings-metric {
+  margin: 0;
+  color: var(--accent);
+  font-size: var(--fs-value);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

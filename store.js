@@ -17,6 +17,7 @@ const DEFAULT_REPO = Object.freeze({
 });
 
 const DEFAULT_OPENS = Object.freeze({ count: 0, lastAt: null });
+const FINE_GRAINED_PREFIX = 'github_pat_';
 
 function readRaw(key) {
   try {
@@ -74,10 +75,20 @@ function nonEmptyString(value) {
 
 // --- Токен ---------------------------------------------------------------
 
-export function getToken() {
+export function getStoredToken() {
   const raw = readRaw(KEYS.token);
   if (!nonEmptyString(raw)) return null;
   return raw.trim();
+}
+
+export function isFineGrainedToken(token) {
+  const value = typeof token === 'string' ? token.trim() : '';
+  return value.startsWith(FINE_GRAINED_PREFIX) && value.length > FINE_GRAINED_PREFIX.length;
+}
+
+export function getToken() {
+  const token = getStoredToken();
+  return isFineGrainedToken(token) ? token : null;
 }
 
 export function setToken(token) {
@@ -85,6 +96,7 @@ export function setToken(token) {
     clearToken();
     return false;
   }
+  if (!isFineGrainedToken(token)) return false;
   return writeRaw(KEYS.token, token.trim());
 }
 

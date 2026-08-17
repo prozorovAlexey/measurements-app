@@ -107,7 +107,7 @@ globalThis.localStorage = {
 // ===== Заглушка сети ======================================================
 // Хост только api.github.com: любой другой запрос — нарушение §0 контракта.
 
-const TOKEN = 'ghp_fixture';
+const TOKEN = 'github_pat_fixture';
 const DAY = '2026-08-14';
 
 const calls = [];

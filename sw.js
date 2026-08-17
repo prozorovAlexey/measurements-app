@@ -17,7 +17,7 @@
 // Роль «последнего index.json» исполняет bm.index_cache в localStorage:
 // шпаргалка рисуется из него ещё до первого сетевого запроса (T4).
 
-const VERSION = '2026-08-17-1'; // ПОДНИМАТЬ ПРИ КАЖДОМ ДЕПЛОЕ
+const VERSION = '2026-08-17-2'; // ПОДНИМАТЬ ПРИ КАЖДОМ ДЕПЛОЕ
 const CACHE_NAME = `bm-shell-${VERSION}`;
 
 // Префикс обязателен: на github.io все проекты пользователя делят один
@@ -36,6 +36,7 @@ const SHELL = [
   './catalog.js',
   './session.js',
   './queue.js',
+  './sparkline.js',
   './screens/cheatsheet.js',
   './screens/entry.js',
   './screens/history.js',
@@ -198,6 +199,8 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(cacheFirst(request));
 });
 
-// T8: кнопка «Обновить приложение» в настройках может прислать сюда
-// { type: 'skip-waiting' } и позвать self.skipWaiting() по явному действию
-// пользователя. Обработчика пока нет — заводить его вхолостую незачем.
+// Новая оболочка захватывает открытую страницу только по явной команде из
+// Настроек (T8). Без неё ожидающий worker включится при следующем запуске.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'skip-waiting') self.skipWaiting();
+});

@@ -9,7 +9,7 @@
 //  - наружу летит только GitHubError с конкретным kind, голого Error нет
 //    ни в одной ветке — экраны показывают текст ошибки как есть.
 
-import { getToken, getRepoConfig } from './store.js';
+import { getRepoConfig, getStoredToken, isFineGrainedToken } from './store.js';
 
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2022-11-28';
@@ -98,8 +98,8 @@ function contentsUrl(path) {
 }
 
 function requireToken() {
-  const token = getToken();
-  if (!token) throw fail('no-token', null);
+  const token = getStoredToken();
+  if (!isFineGrainedToken(token)) throw fail('no-token', null);
   return token;
 }
 

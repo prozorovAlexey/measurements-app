@@ -343,7 +343,7 @@ async function renderScreen(options = {}) {
   const {
     index = null,
     github = { kind: 'data', body: index ?? EMPTY_INDEX },
-    token = 'ghp_fixture',
+    token = 'github_pat_fixture',
     files = [],
     put = { kind: 'ok' }
   } = options;

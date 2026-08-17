@@ -404,22 +404,32 @@ await step('статика: промах дозагружается и клад�
 await step('статика: 404 в кэш не кладётся', async () => {
   reset();
   await install();
-  const event = fireEvent('fetch', plainRequest('./sparkline.js')); // появится в T8
+  const event = fireEvent('fetch', plainRequest('./missing-module.js'));
   const response = await event.responded;
   assert.equal(response.status, 404, 'отсутствующий файл ответил не 404');
 
   const cache = Array.from(cacheStore.values())[0];
-  assert.equal(await cache.match(relToURL('./sparkline.js')), undefined, '404 закэширована');
+  assert.equal(await cache.match(relToURL('./missing-module.js')), undefined, '404 закэширована');
 });
 
 await step('статика офлайн и без копии: внятный 503, а не белый экран', async () => {
   reset();
   await install();
   online = false;
-  const event = fireEvent('fetch', plainRequest('./sparkline.js'));
+  const event = fireEvent('fetch', plainRequest('./missing-module.js'));
   const response = await event.responded;
   assert.equal(response.status, 503, `ответ ${response.status}`);
   assert.match(await response.text(), /Нет сети/, 'сообщение не по-русски и не по делу');
+});
+
+await step('T8: skip-waiting принимается только по явной команде', () => {
+  skipWaitingCalls = 0;
+  const handler = listeners.get('message');
+  assert.equal(typeof handler, 'function', 'нет обработчика команды из Настроек');
+  handler({ data: { type: 'другая-команда' } });
+  assert.equal(skipWaitingCalls, 0, 'неизвестная команда включила worker');
+  handler({ data: { type: 'skip-waiting' } });
+  assert.equal(skipWaitingCalls, 1, 'новая версия не включилась');
 });
 
 // ===== Сторожа инвариантов ================================================
