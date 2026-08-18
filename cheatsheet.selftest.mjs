@@ -413,6 +413,32 @@ await step('catalog: провал загрузки сбрасывает мемо
 
 storageEnabled = true; // с этого места store.js видит хранилище, см. комментарий выше
 
+await step('catalog: cached hydration не рассогласовывает resolved loadCatalog', async () => {
+  const consistent = await import('./catalog.js?cache-consistency');
+  const rawA = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
+  const loadedA = await consistent.loadCatalog();
+  const weightA = consistent.getMeasurement('weight');
+  const versionA = consistent.protocolVersion();
+
+  const rawB = JSON.parse(JSON.stringify(rawA));
+  rawB.protocol_version = versionA + 1;
+  rawB.measurements.find((item) => item.key === 'weight').label = 'Вес из кэша B';
+  storage.set(store.KEYS.catalog, JSON.stringify({
+    data: rawB,
+    fetchedAt: new Date().toISOString()
+  }));
+
+  const hydrated = consistent.loadCachedCatalog();
+  const loadedAgain = await consistent.loadCatalog();
+  assert.equal(hydrated, loadedA, 'hydration вернула уже применённый entries A');
+  assert.equal(loadedAgain, loadedA, 'memoized loadCatalog по-прежнему возвращает A');
+  assert.equal(consistent.getMeasurement('weight'), weightA, 'геттер не переключился на B');
+  assert.equal(consistent.getMeasurement('weight').label, 'Вес');
+  assert.equal(consistent.protocolVersion(), versionA, 'protocolVersion остался от A');
+
+  store.setCatalogCache(rawA); // не оставляем B следующим DOM-проверкам
+});
+
 const CATALOG = await catalog.loadCatalog();
 const SHOPPING_EXTRA = ['chest', 'hip', 'neck'];
 const SHOPPING_KEYS = CATALOG

@@ -7,7 +7,8 @@ export const KEYS = {
   repo: 'bm.repo', // { owner, repo, branch }
   index: 'bm.index_cache', // { data, fetchedAt } fetchedAt — ISO-строка
   catalog: 'bm.catalog_cache', // { data, fetchedAt } то же, для catalog.json
-  opens: 'bm.cheatsheet_opens' // { count, lastAt }
+  opens: 'bm.cheatsheet_opens', // { count, lastAt }
+  profile: 'bm.profile' // { sex: 'male' | 'female' }
 };
 
 const DEFAULT_REPO = Object.freeze({
@@ -17,6 +18,7 @@ const DEFAULT_REPO = Object.freeze({
 });
 
 const DEFAULT_OPENS = Object.freeze({ count: 0, lastAt: null });
+const DEFAULT_PROFILE = Object.freeze({ sex: 'male' });
 const FINE_GRAINED_PREFIX = 'github_pat_';
 
 function readRaw(key) {
@@ -179,5 +181,21 @@ export function bumpCheatsheetOpens() {
   const current = getCheatsheetOpens();
   const next = { count: current.count + 1, lastAt: new Date().toISOString() };
   writeJSON(KEYS.opens, next);
+  return next;
+}
+
+// --- Профиль фигуры (T12) ------------------------------------------------
+
+export function getProfile() {
+  const stored = readJSON(KEYS.profile);
+  if (!isPlainObject(stored)) return { ...DEFAULT_PROFILE };
+  return { sex: stored.sex === 'female' ? 'female' : 'male' };
+}
+
+export function setProfile(profile) {
+  const next = {
+    sex: isPlainObject(profile) && profile.sex === 'female' ? 'female' : 'male'
+  };
+  writeJSON(KEYS.profile, next);
   return next;
 }

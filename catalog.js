@@ -130,6 +130,23 @@ async function fetchCatalog() {
 }
 
 // -> массив записей в порядке catalog.json.
+// Синхронная гидрация нужна T12 для настоящей первой отрисовки из кэша:
+// pending она не заполняет, поэтому следующий loadCatalog() по-прежнему
+// обязательно выполняет существующую network-first ревалидацию.
+export function loadCachedCatalog() {
+  // pending хранится и во время запроса, и после успешного resolve. В обоих
+  // состояниях entries уже принадлежат этому же жизненному циклу loadCatalog:
+  // повторный apply() из изменившегося localStorage рассогласовал бы геттеры
+  // с массивом, который возвращает memoized promise.
+  if (pending) return entries;
+  const cached = getCatalogCache();
+  const raw = cached ? cached.data : null;
+  const list = normalize(raw);
+  if (list.length === 0) return [];
+  apply(list, raw);
+  return list;
+}
+
 export async function loadCatalog() {
   if (pending) return pending;
   pending = fetchCatalog();

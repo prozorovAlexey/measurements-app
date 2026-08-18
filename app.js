@@ -6,6 +6,7 @@ import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
   cheatsheet: () => import('./screens/cheatsheet.js'),
+  figure: () => import('./screens/figure.js'),
   entry: () => import('./screens/entry.js'),
   history: () => import('./screens/history.js'),
   settings: () => import('./screens/settings.js')
@@ -15,6 +16,7 @@ const TOAST_MS = 3200;
 const TONES = ['ok', 'stale', 'error'];
 
 const appEl = document.getElementById('app');
+const shellEl = document.getElementById('app-shell');
 const titleEl = document.getElementById('screen-title');
 const statusEl = document.getElementById('header-status');
 const toastHost = document.getElementById('toast-host');
@@ -44,6 +46,7 @@ function decodeSegment(segment) {
 function resolveRoute(hash) {
   const parts = normalizeHash(hash).slice(1).split('/').filter(Boolean).map(decodeSegment);
   if (parts.length === 0) return { name: 'cheatsheet', params: {} };
+  if (parts.length === 1 && parts[0] === 'figure') return { name: 'figure', params: {} };
   if (parts.length === 1 && parts[0] === 'entry') return { name: 'entry', params: {} };
   if (parts.length === 1 && parts[0] === 'settings') return { name: 'settings', params: {} };
   if (parts.length === 2 && parts[0] === 'history') return { name: 'history', params: { key: parts[1] } };
@@ -59,6 +62,11 @@ function markActiveTab(name) {
     if (active) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
+}
+
+function markLayout(name) {
+  if (!shellEl) return;
+  shellEl.classList.toggle('app-shell--figure', name === 'figure');
 }
 
 export function setHeaderStatus(text, tone) {
@@ -135,6 +143,7 @@ async function mount(route) {
   appEl.replaceChildren();
   setHeaderStatus(null);
   markActiveTab(route.name);
+  markLayout(route.name);
 
   let mod;
   try {

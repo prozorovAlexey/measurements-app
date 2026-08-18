@@ -12,6 +12,13 @@
   --warn: #9a5b00;
   --danger: #c02626;
   --ok: #14713f;
+  --accent-strong: #1073af;
+  --fig-fill: #dceff7;
+  --fig-stroke: #176e9f;
+  --fig-guide: #8394a2;
+  --kpi-weight: #e5f1fb;
+  --kpi-bmi: #eaf4e4;
+  --kpi-whr: #fff0dc;
 
   /* Значение шпаргалки читается с вытянутой руки (§7.1). */
   --fs-value: clamp(2rem, 11vw, 3.25rem);
@@ -20,6 +27,9 @@
 
   --gap: 0.75rem;
   --radius: 0.75rem;
+  --r-card: 0.375rem;
+  --sh-card: 0 0.35rem 1.25rem rgb(20 55 75 / 10%);
+  --fs-kpi: clamp(1.45rem, 7vw, 2.25rem);
 
   /* Минимальная тач-цель — 44px. */
   --tap: 2.75rem;
@@ -36,6 +46,13 @@
     --warn: #e2a44f;
     --danger: #ff7070;
     --ok: #52c98a;
+    --accent-strong: #71c8f2;
+    --fig-fill: #203b49;
+    --fig-stroke: #79c6e8;
+    --fig-guide: #8197a5;
+    --kpi-weight: #1c3447;
+    --kpi-bmi: #253827;
+    --kpi-whr: #403326;
   }
 }
 
@@ -51,17 +68,25 @@ html {
 }
 
 body {
-  margin: 0 auto;
-  max-width: 34rem;
+  margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: var(--fs-body);
   line-height: 1.45;
+}
+
+.app-shell {
+  width: 100%;
+  max-width: 34rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
 }
 
 :where(a, button, input, select, textarea):focus-visible {
@@ -265,7 +290,7 @@ body {
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom);
@@ -749,4 +774,339 @@ body {
   font-size: var(--fs-value);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* Фигура T12 (§7.5)
+   Геометрия SVG приходит из figure.js; здесь только раскладка и палитра.
+   Ни одного цветового литерала внутри самого SVG нет. */
+
+.figure-screen {
+  min-width: 0;
+}
+
+.subtabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.subtabs__item {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.65rem;
+  border-radius: calc(var(--r-card) * 0.75);
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.subtabs__item--active {
+  background: var(--accent-strong);
+  color: var(--surface);
+}
+
+.subtabs__item--disabled {
+  opacity: 0.55;
+}
+
+.fig-dates {
+  display: flex;
+  gap: calc(var(--gap) / 2);
+  padding-bottom: 0.15rem;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.chip {
+  min-height: var(--tap);
+  flex: 0 0 auto;
+  padding: 0.35rem 0.8rem;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.chip--active {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--surface);
+}
+
+.figure-layout,
+.figure-summary {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.fig-card {
+  min-width: 0;
+  padding: var(--gap);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+}
+
+.fig-profile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  min-height: var(--tap);
+  margin-bottom: calc(var(--gap) / 2);
+}
+
+.fig-profile__label {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fig-profile__select {
+  min-height: var(--tap);
+  padding: 0.35rem 0.6rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  font: inherit;
+}
+
+.fig-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.fig-body {
+  fill: var(--fig-fill);
+  stroke: var(--fig-stroke);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.fig-ground {
+  fill: var(--fig-fill);
+  opacity: 0.42;
+}
+
+.fig-card--empty .fig-body,
+.fig-card--empty .fig-ground {
+  opacity: 0.45;
+}
+
+.fig-guide {
+  color: var(--fig-guide);
+  font-size: 8.5px;
+  pointer-events: none;
+}
+
+.fig-guide line {
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.fig-guide text {
+  fill: currentColor;
+}
+
+.fig-guide--active {
+  color: var(--accent-strong);
+}
+
+.fig-guide--active line {
+  stroke-width: 1.5;
+}
+
+/* Дефолтная геометрия остаётся только каркасом: прочерк и волосяная линия
+   не дают принять подставленную ширину за реальный замер. */
+.fig-guide--missing {
+  color: var(--fig-guide);
+  opacity: 0.62;
+}
+
+.fig-guide--missing line {
+  stroke-width: 0.55;
+  stroke-dasharray: 2 3;
+}
+
+.fig-guide__name {
+  font-weight: 500;
+}
+
+.fig-guide__reading {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--gap) / 2);
+}
+
+.kpi {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: calc(var(--gap) / 1.4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+}
+
+.kpi--weight {
+  background: var(--kpi-weight);
+}
+
+.kpi--bmi {
+  background: var(--kpi-bmi);
+}
+
+.kpi--whr {
+  background: var(--kpi-whr);
+}
+
+.kpi__label,
+.kpi__sub {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.kpi__value {
+  min-width: 0;
+  font-size: var(--fs-kpi);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.kpi__value--missing {
+  color: var(--muted);
+}
+
+.fig-empty p,
+.fig-loading p {
+  margin: 0 0 var(--gap);
+}
+
+.mgroup h2 {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mrow {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: calc(var(--gap) / 2) 0;
+}
+
+.mrow + .mrow {
+  border-top: 1px solid var(--border);
+}
+
+.mrow__heading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mrow__name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.mrow__reading {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+  text-align: right;
+}
+
+.mrow__amount {
+  font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mrow__amount--missing,
+.mrow__when {
+  color: var(--muted);
+}
+
+.mrow__when,
+.mrow__delta {
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Просрочка касается только подписи даты. Число остаётся того же размера
+   и контраста, поэтому старое значение не исчезает визуально. */
+.mrow__when--stale {
+  color: var(--warn);
+}
+
+.delta--up {
+  color: var(--ok);
+}
+
+.delta--down {
+  color: var(--danger);
+}
+
+/* Включая мёртвую зону: asof.delta() возвращает flat, CSS не добавляет
+   ей семантический зелёный или красный тон. */
+.delta--flat {
+  color: var(--muted);
+}
+
+.fig-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+}
+
+.fig-actions .btn {
+  flex: 1 1 9rem;
+}
+
+@media (min-width: 56rem) {
+  .app-shell--figure {
+    max-width: 70rem;
+  }
+
+  .figure-layout {
+    display: grid;
+    grid-template-columns: minmax(22rem, 0.92fr) minmax(25rem, 1.08fr);
+    align-items: start;
+  }
+
+  .fig-card {
+    position: sticky;
+    top: calc(var(--tap) + var(--gap));
+  }
 }
