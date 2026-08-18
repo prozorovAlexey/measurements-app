@@ -21,6 +21,14 @@ const CATALOG_URL = './catalog.json';
 // Версия методики из корня catalog.json (§6.3). Ею штампуется каждая запись
 // сессии: без неё нельзя понять, с чем значение вообще сравнимо (§5 спеки).
 const DEFAULT_PROTOCOL_VERSION = 1;
+const DIRECTIONS = new Set(['down', 'up', 'none']);
+const SIZE_SCALES = new Set(['clothing', 'shirt', 'jeans', 'shoe', 'ring']);
+const FIGURE_ORDER = Object.freeze([
+  'weight', 'height',
+  'neck', 'shoulder_width', 'chest', 'waist_who', 'pelvis', 'hip',
+  'biceps_relaxed', 'forearm', 'wrist', 'finger_index',
+  'thigh', 'calf', 'foot_length'
+]);
 
 let pending = null; // промис загрузки, пока она идёт или уже удалась
 let entries = []; // порядок — строго как в файле, пересортировки нет нигде
@@ -29,6 +37,21 @@ let rootVersion = DEFAULT_PROTOCOL_VERSION;
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+function normalizeRange(value) {
+  if (
+    !value
+    || !Number.isFinite(value.min)
+    || !Number.isFinite(value.max)
+    || !Number.isFinite(value.step)
+    || value.min >= value.max
+    || value.step <= 0
+  ) {
+    return null;
+  }
+
+  return Object.freeze({ min: value.min, max: value.max, step: value.step });
 }
 
 // Сырой JSON -> неизменяемый список записей §6.3 спеки.
@@ -57,7 +80,12 @@ function normalize(raw) {
         : null,
       landmark: typeof item.landmark === 'string' ? item.landmark : '',
       posture: typeof item.posture === 'string' ? item.posture : '',
-      show_in_cheatsheet: item.show_in_cheatsheet !== false
+      show_in_cheatsheet: item.show_in_cheatsheet !== false,
+      svg_id: nonEmptyString(item.svg_id) ? item.svg_id.trim() : null,
+      direction: DIRECTIONS.has(item.direction) ? item.direction : 'none',
+      ui_range: normalizeRange(item.ui_range),
+      show_on_figure: item.show_on_figure === true,
+      size_scale: SIZE_SCALES.has(item.size_scale) ? item.size_scale : null
     }));
   }
 
@@ -132,6 +160,12 @@ export function staticMeasurements() {
 
 export function cheatsheetMeasurements() {
   return entries.filter((item) => item.show_in_cheatsheet);
+}
+
+export function figureMeasurements() {
+  return FIGURE_ORDER
+    .map((key) => index.get(key))
+    .filter((item) => item?.show_on_figure === true);
 }
 
 // Версия методики для штампа записей сессии (§6.1). До загрузки каталога —

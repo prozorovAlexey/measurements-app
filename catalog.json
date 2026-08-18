@@ -10,7 +10,12 @@
       "frequency_days": 7,
       "landmark": "Весы на твёрдом ровном полу, без одежды",
       "posture": "Утро, после туалета, до еды, до тренировки",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 40, "max": 160, "step": 0.1 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "waist_who",
@@ -21,7 +26,12 @@
       "frequency_days": 21,
       "landmark": "Середина между нижним краем последнего ребра и гребнем подвздошной кости",
       "posture": "Стоя, руки опущены, конец спокойного выдоха, лента горизонтально",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "waist",
+      "direction": "down",
+      "ui_range": { "min": 55, "max": 140, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "waist_umbilicus",
@@ -32,7 +42,12 @@
       "frequency_days": 21,
       "landmark": "Уровень пупка",
       "posture": "Стоя, лента горизонтально",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 55, "max": 140, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": null
     },
     {
       "key": "hip",
@@ -43,7 +58,12 @@
       "frequency_days": 21,
       "landmark": "Максимальная точка ягодиц",
       "posture": "Стоя, стопы вместе",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "glutes",
+      "direction": "none",
+      "ui_range": { "min": 70, "max": 150, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "chest",
@@ -54,7 +74,12 @@
       "frequency_days": 21,
       "landmark": "Уровень сосков",
       "posture": "Стоя, руки опущены, конец спокойного выдоха",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "chest",
+      "direction": "none",
+      "ui_range": { "min": 70, "max": 150, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": "clothing"
     },
     {
       "key": "neck",
@@ -65,7 +90,12 @@
       "frequency_days": 21,
       "landmark": "Ниже гортани",
       "posture": "Стоя, лента слегка наклонена вперёд",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "neck",
+      "direction": "none",
+      "ui_range": { "min": 28, "max": 55, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": "shirt"
     },
     {
       "key": "biceps_relaxed",
@@ -76,7 +106,12 @@
       "frequency_days": 21,
       "landmark": "Максимальный обхват",
       "posture": "Стоя, рука опущена вдоль тела",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "biceps",
+      "direction": "none",
+      "ui_range": { "min": 20, "max": 55, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "biceps_flexed",
@@ -87,7 +122,12 @@
       "frequency_days": 21,
       "landmark": "Максимальный обхват",
       "posture": "Стоя, рука согнута 90°, напряжена",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 20, "max": 60, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": null
     },
     {
       "key": "thigh",
@@ -98,7 +138,12 @@
       "frequency_days": 21,
       "landmark": "10 см выше верхнего края надколенника",
       "posture": "Стоя, вес на обеих ногах",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "thigh",
+      "direction": "none",
+      "ui_range": { "min": 40, "max": 80, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "calf",
@@ -109,7 +154,44 @@
       "frequency_days": 21,
       "landmark": "Максимальный обхват",
       "posture": "Стоя, вес на обеих ногах",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "calf",
+      "direction": "none",
+      "ui_range": { "min": 25, "max": 55, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
+    },
+    {
+      "key": "forearm",
+      "label": "Предплечье",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Максимальный обхват",
+      "posture": "Рука опущена и расслаблена, ладонь развёрнута вперёд",
+      "show_in_cheatsheet": true,
+      "svg_id": "forearm",
+      "direction": "none",
+      "ui_range": { "min": 18, "max": 45, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
+    },
+    {
+      "key": "pelvis",
+      "label": "Таз",
+      "class": "dynamic",
+      "unit": "cm",
+      "reps": 3,
+      "frequency_days": 21,
+      "landmark": "Горизонтально по наиболее выступающим точкам подвздошных костей",
+      "posture": "Стопы вместе — отдельная метрика, не смешивать с hip",
+      "show_in_cheatsheet": true,
+      "svg_id": "pelvis",
+      "direction": "none",
+      "ui_range": { "min": 70, "max": 150, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "height",
@@ -120,7 +202,12 @@
       "frequency_days": null,
       "landmark": "Отметка на стене на уровне макушки",
       "posture": "Утром, пятки/ягодицы/лопатки у стены, взгляд горизонтально",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 140, "max": 210, "step": 1 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "foot_length",
@@ -131,7 +218,12 @@
       "frequency_days": null,
       "landmark": "Пятка у стены",
       "posture": "Стоя, вес на обе ноги, обе стопы отдельно",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "foot",
+      "direction": "none",
+      "ui_range": { "min": 20, "max": 34, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": "shoe"
     },
     {
       "key": "foot_width",
@@ -142,7 +234,12 @@
       "frequency_days": null,
       "landmark": "Максимальная ширина плюсны",
       "posture": "Стоя",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 7, "max": 15, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": null
     },
     {
       "key": "inseam",
@@ -153,7 +250,12 @@
       "frequency_days": null,
       "landmark": "От промежности до пола",
       "posture": "Стоя, без обуви",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 55, "max": 100, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": "jeans"
     },
     {
       "key": "sleeve",
@@ -164,7 +266,12 @@
       "frequency_days": null,
       "landmark": "От точки плеча до косточки запястья",
       "posture": "Стоя, рука слегка согнута",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 45, "max": 80, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": "shirt"
     },
     {
       "key": "shoulder_width",
@@ -175,7 +282,12 @@
       "frequency_days": null,
       "landmark": "Между акромионами",
       "posture": "Стоя, со спины",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": "shoulder",
+      "direction": "none",
+      "ui_range": { "min": 32, "max": 62, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
     },
     {
       "key": "head_circ",
@@ -186,7 +298,12 @@
       "frequency_days": null,
       "landmark": "Над бровями и над ушами, максимальный обхват",
       "posture": "Стоя",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 45, "max": 70, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": null
     },
     {
       "key": "waist_natural",
@@ -197,7 +314,44 @@
       "frequency_days": null,
       "landmark": "Самое узкое место",
       "posture": "Стоя. Отдельная метрика — не смешивать с «Талия (WHO)»",
-      "show_in_cheatsheet": true
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 55, "max": 140, "step": 0.5 },
+      "show_on_figure": false,
+      "size_scale": "jeans"
+    },
+    {
+      "key": "wrist",
+      "label": "Запястье",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Обхват по косточке запястья, ниже шиловидного отростка",
+      "posture": "Рука расслаблена",
+      "show_in_cheatsheet": true,
+      "svg_id": "wrist",
+      "direction": "none",
+      "ui_range": { "min": 13, "max": 25, "step": 0.5 },
+      "show_on_figure": true,
+      "size_scale": null
+    },
+    {
+      "key": "finger_index",
+      "label": "Палец (кольцо)",
+      "class": "static",
+      "unit": "cm",
+      "reps": 1,
+      "frequency_days": null,
+      "landmark": "Правая рука, обхват у основания указательного пальца — там, где сидит кольцо",
+      "posture": "Вечером, пальцы тёплые. Отдельно проверить, что кольцо проходит через костяшку",
+      "show_in_cheatsheet": true,
+      "svg_id": null,
+      "direction": "none",
+      "ui_range": { "min": 4, "max": 10, "step": 0.1 },
+      "show_on_figure": true,
+      "size_scale": "ring"
     }
   ]
 }

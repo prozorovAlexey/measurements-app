@@ -88,7 +88,7 @@ await step('buildSession: каталога нет — unit пустой, сбо�
 
 await step('каталог загружается — дальше единицы берутся из него', async () => {
   const list = await catalog.loadCatalog();
-  assert.equal(list.length, 18, 'в catalog.json должно быть 18 замеров (§5 спеки)');
+  assert.equal(list.length, 22, 'в catalog.json должно быть 22 замера (§5 спеки)');
   assert.equal(catalog.getMeasurement('waist_who').unit, 'cm');
   assert.equal(catalog.getMeasurement('weight').unit, 'kg');
 });

@@ -493,7 +493,7 @@ await step('контракт §2: title, render, destroy', () => {
 await step('по умолчанию — полная сессия: все динамические замеры в порядке каталога', async () => {
   const root = await renderScreen({ index: INDEX_NEAR });
   assert.deepEqual(keysOf(root), DYNAMIC_KEYS);
-  assert.equal(blocksOf(root).length, 10);
+  assert.equal(blocksOf(root).length, 12);
 
   const [full, custom] = modeInputs(root);
   assert.equal(full.type, 'radio');
@@ -646,7 +646,7 @@ await step('нет ни сети, ни кэша — проверка откло�
 
 await step('§7.2: переключение режима меняет набор блоков, статика доступна', async () => {
   const root = await renderScreen({ index: INDEX_NEAR });
-  assert.equal(blocksOf(root).length, 10);
+  assert.equal(blocksOf(root).length, 12);
 
   const [full, custom] = modeInputs(root);
   custom.checked = true;
@@ -889,7 +889,7 @@ await step('пустая сессия не уходит в сеть, а объя
   const text = messagesText(root);
   assert.match(text, /[а-яё]/i, `текст не русский: ${text}`);
   assert.ok(text.includes('нет ни одного значения'), text);
-  assert.equal(blocksOf(root).length, 10, 'форма пережила отказ');
+  assert.equal(blocksOf(root).length, 12, 'форма пережила отказ');
 });
 
 // --- Сторожа инвариантов --------------------------------------------------

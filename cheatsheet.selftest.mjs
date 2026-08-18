@@ -357,10 +357,10 @@ await step('shortenStatus: короткое не трогаем, длинное 
 
 await step('catalog: загрузка catalog.json и выборки §5', async () => {
   const list = await catalog.loadCatalog();
-  assert.equal(list.length, 18, 'все 18 замеров раздела 5 спеки');
-  assert.equal(catalog.dynamicMeasurements().length, 10);
-  assert.equal(catalog.staticMeasurements().length, 8);
-  assert.equal(catalog.cheatsheetMeasurements().length, 18);
+  assert.equal(list.length, 22, 'все 22 замера раздела 5 спеки');
+  assert.equal(catalog.dynamicMeasurements().length, 12);
+  assert.equal(catalog.staticMeasurements().length, 10);
+  assert.equal(catalog.cheatsheetMeasurements().length, 22);
   assert.equal(catalog.getMeasurement('waist_who').label, 'Талия (WHO)');
   assert.equal(catalog.getMeasurement('waist_who').frequency_days, 21);
   assert.equal(catalog.getMeasurement('height').frequency_days, null, 'у статики частоты нет');
@@ -372,7 +372,7 @@ await step('catalog: порядок выборок — как в файле, б�
   const keys = list.map((item) => item.key);
   assert.equal(keys[0], 'weight');
   assert.equal(keys[1], 'waist_who');
-  assert.equal(keys[keys.length - 1], 'waist_natural');
+  assert.equal(keys[keys.length - 1], 'finger_index');
   assert.equal(catalog.dynamicMeasurements()[0].key, 'weight');
   assert.equal(catalog.staticMeasurements()[0].key, 'height');
   // Порядок «Для покупок» из §7.1: chest/hip/neck идут раньше статики.
@@ -381,7 +381,7 @@ await step('catalog: порядок выборок — как в файле, б�
     .map((item) => item.key);
   assert.deepEqual(shopping.slice(0, 3), ['hip', 'chest', 'neck']);
   assert.equal(shopping[3], 'height');
-  assert.equal(shopping.length, 11);
+  assert.equal(shopping.length, 13);
 });
 
 await step('catalog: параллельные вызовы делят один fetch', async () => {
@@ -637,7 +637,10 @@ await step('§13 DOM: замер без значения показан проч
 
   const empty = rows.filter((row) => row.valueText === '—').map((row) => row.key).sort();
   // neck попадает в обе секции, поэтому в списке дважды.
-  assert.deepEqual(empty, ['biceps_flexed', 'foot_width', 'neck', 'neck', 'shoulder_width']);
+  assert.deepEqual(empty, [
+    'biceps_flexed', 'finger_index', 'foot_width', 'forearm',
+    'neck', 'neck', 'pelvis', 'shoulder_width', 'wrist'
+  ]);
 
   for (const row of rows.filter((item) => item.valueText === '—')) {
     assert.ok(row.value.classList.contains('value--empty'), `${row.key}: нет класса value--empty`);
