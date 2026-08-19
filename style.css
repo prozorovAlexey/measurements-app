@@ -89,7 +89,7 @@ body {
   background: var(--bg);
 }
 
-:where(a, button, input, select, textarea):focus-visible {
+:where(a, button, input, select, textarea, [role='button']):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -918,6 +918,14 @@ body {
   pointer-events: none;
 }
 
+/* Прозрачная тач-цель выноски (T13): линия и текст остаются pointer-events:none,
+   кликабелен только этот прямоугольник — он и открывает шторку. */
+.fig-guide__hit {
+  fill: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 .fig-guide line {
   stroke: currentColor;
   stroke-width: 1;
@@ -1023,6 +1031,7 @@ body {
   justify-content: space-between;
   gap: var(--gap);
   padding: calc(var(--gap) / 2) 0;
+  cursor: pointer;
 }
 
 .mrow + .mrow {
@@ -1109,4 +1118,135 @@ body {
     position: sticky;
     top: calc(var(--tap) + var(--gap));
   }
+}
+
+/* Шторка быстрого ввода (T13, §7.5) */
+
+.sheet__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(15 17 21 / 45%);
+}
+
+.sheet {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+  padding: var(--gap) var(--gap) calc(var(--gap) * 1.5);
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--sh-card);
+}
+
+.sheet__grip {
+  width: 2.5rem;
+  height: 0.25rem;
+  margin: 0 auto calc(var(--gap) / 2);
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.sheet__title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.sheet__date,
+.sheet__hint,
+.sheet__protocol {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.sheet__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.sheet__step {
+  flex: 0 0 auto;
+  width: var(--tap);
+  height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg);
+  color: var(--accent-strong);
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.sheet__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.sheet__input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 2.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sheet__unit {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sheet__slider {
+  width: 100%;
+  accent-color: var(--accent-strong);
+}
+
+.sheet__range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-small);
+}
+
+.sheet__error:empty {
+  display: none;
+}
+
+.sheet__actions {
+  display: flex;
+  gap: calc(var(--gap) / 2);
+}
+
+.sheet__actions .btn {
+  flex: 1 1 auto;
+  justify-content: center;
 }
