@@ -270,10 +270,18 @@ await step('cache-first: полный DOM виден до завершения c
   catalogBroken = false;
   catalogGate = {};
   const githubBefore = githubFetchCalls;
+  const pendingCatalogFailure = assert.rejects(
+    catalog.loadCatalog(),
+    /Каталог замеров не загрузился/
+  );
+  assert.equal(
+    typeof catalogGate.reject,
+    'function',
+    'другой экран уже начал сетевую загрузку каталога'
+  );
 
   const root = createElement('main');
   await figureScreen.render(root, {});
-  assert.equal(typeof catalogGate.reject, 'function', 'сетевой catalog fetch действительно завис');
   assert.equal(byClass(root, 'mrow').length, 15, 'строки уже взяты из двух кэшей');
   assert.equal(byClass(root, 'kpi').length, 3, 'KPI уже отрисованы');
   assert.equal(byClass(root, 'fig-body').length, 1, 'SVG уже отрисован');
@@ -300,6 +308,7 @@ await step('cache-first: полный DOM виден до завершения c
   const gate = catalogGate;
   catalogGate = null;
   gate.reject(new TypeError('контролируемый обрыв catalog fetch'));
+  await pendingCatalogFailure;
   await flush();
   assert.equal(byClass(root, 'mrow').length, 15, 'уже показанный кэш не стёрт ошибкой');
   assert.equal(headerStatus.textContent, 'Из кэша');

@@ -134,11 +134,12 @@ async function fetchCatalog() {
 // pending она не заполняет, поэтому следующий loadCatalog() по-прежнему
 // обязательно выполняет существующую network-first ревалидацию.
 export function loadCachedCatalog() {
-  // pending хранится и во время запроса, и после успешного resolve. В обоих
-  // состояниях entries уже принадлежат этому же жизненному циклу loadCatalog:
-  // повторный apply() из изменившегося localStorage рассогласовал бы геттеры
-  // с массивом, который возвращает memoized promise.
-  if (pending) return entries;
+  // После гидрации или успешного resolve entries принадлежат текущему lifecycle
+  // loadCatalog: повторный apply() из изменившегося localStorage рассогласовал бы
+  // геттеры с массивом, который возвращает memoized promise. Но первый pending
+  // может начаться на другом экране раньше гидрации; при пустом entries кэш всё
+  // ещё нужен для первой отрисовки T12, пока сетевой запрос не завершён.
+  if (pending && entries.length > 0) return entries;
   const cached = getCatalogCache();
   const raw = cached ? cached.data : null;
   const list = normalize(raw);
