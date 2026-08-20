@@ -221,10 +221,13 @@ function geometry(values, measured, figure) {
     shoulderAxis + biceps * 0.55,
     sideAt(0.53) + Math.max(4, BODY_HEIGHT * 0.0095) + palm
   );
+  // Показатель степени < 1: ось руки уходит от корпуса быстро сразу после
+  // плеча, а не только у кисти — иначе бицепс упирается в зазор до корпуса
+  // и рендерится куда тоньше своего обхвата (жалоба "рука как соломинка").
   const armAxis = (fraction) => (
     shoulderAxis
     + (handAxis - shoulderAxis)
-      * Math.pow(clamp((fraction - 0.214) / 0.316, 0, 1), 1.2)
+      * Math.pow(clamp((fraction - 0.214) / 0.316, 0, 1), 0.6)
   );
   // Предплечье сужается к запястью монотонно: если измеренное запястье
   // толще дефолтного предплечья, оно не должно раздувать кисть после сужения.
@@ -236,9 +239,12 @@ function geometry(values, measured, figure) {
     [0.345, biceps * 0.92], [0.383, elbow], [0.43, forearmUpper],
     [0.465, forearmLower], [0.492, wristWidth]
   ];
+  // Возвращено к исходным значениям: раздувание зазора не убирало залом
+  // (тот был из-за немонотонного torsoSides/armWidths, уже поправлено выше),
+  // а только зря утоньшало руку.
   const armGaps = [
-    [0.252, 3.0], [0.29, 4.6], [0.345, 6.2], [0.392, 7.0],
-    [0.45, 5.6], [0.492, 4.4]
+    [0.252, 1.8], [0.29, 3.4], [0.345, 5.2], [0.392, 6.0],
+    [0.45, 4.5], [0.492, 3.6]
   ];
   const armOuter = (fraction) => Math.min(
     armAxis(fraction) + sample(armWidths, fraction),
