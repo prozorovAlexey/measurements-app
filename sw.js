@@ -17,7 +17,7 @@
 // Роль «последнего index.json» исполняет bm.index_cache в localStorage:
 // шпаргалка рисуется из него ещё до первого сетевого запроса (T4).
 
-const VERSION = '2026-08-20-1'; // ПОДНИМАТЬ ПРИ КАЖДОМ ДЕПЛОЕ
+const VERSION = '2026-08-20-2'; // ПОДНИМАТЬ ПРИ КАЖДОМ ДЕПЛОЕ
 const CACHE_NAME = `bm-shell-${VERSION}`;
 
 // Префикс обязателен: на github.io все проекты пользователя делят один
@@ -41,6 +41,7 @@ const SHELL = [
   './asof.js',
   './sizes.js',
   './screens/figure.js',
+  './screens/compare.js',
   './screens/sizes.js',
   './screens/entry.js',
   './screens/history.js',

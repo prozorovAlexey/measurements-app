@@ -1331,3 +1331,55 @@ body {
   flex: 1 1 auto;
   justify-content: center;
 }
+
+/* Сравнение (T16, §7.6). KPI и Δ переиспользуют классы «Фигуры» без
+   изменений — одни и те же данные не могут красить Δ двумя разными
+   способами на двух вкладках. */
+
+.cmp-dates {
+  display: flex;
+  gap: var(--gap);
+}
+
+.cmp-dates .field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Компари добавляет четвёртую KPI-карточку (Δ веса, Δ талии, ИМТ, дни):
+   2×2 читается на телефоне лучше, чем 3+1 из сетки «Фигуры». */
+.kpi-grid--4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cmp-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.cmp-table {
+  width: 100%;
+  min-width: 30rem;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmp-table th,
+.cmp-table td {
+  padding: calc(var(--gap) / 1.5) calc(var(--gap) / 2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.cmp-table th:not(:first-child),
+.cmp-table td:not(:first-child) {
+  text-align: right;
+}
+
+.cmp-table th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}

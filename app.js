@@ -6,11 +6,16 @@ import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
   figure: () => import('./screens/figure.js'),
+  compare: () => import('./screens/compare.js'),
   sizes: () => import('./screens/sizes.js'),
   entry: () => import('./screens/entry.js'),
   history: () => import('./screens/history.js'),
   settings: () => import('./screens/settings.js')
 };
+
+// T16: «Сравнение» — вторая под-вкладка «Фигуры» (§2 контракта), своей
+// иконки в таббаре у неё нет — подсвечивается тот же tab, что и «Фигура».
+const TAB_ALIASES = { compare: 'figure' };
 
 const TOAST_MS = 3200;
 const TONES = ['ok', 'stale', 'error'];
@@ -48,6 +53,7 @@ function decodeSegment(segment) {
 function resolveRoute(hash) {
   const parts = normalizeHash(hash).slice(1).split('/').filter(Boolean).map(decodeSegment);
   if (parts.length === 0) return { name: 'figure', params: {} };
+  if (parts.length === 1 && parts[0] === 'compare') return { name: 'compare', params: {} };
   if (parts.length === 1 && parts[0] === 'sizes') return { name: 'sizes', params: {} };
   if (parts.length === 1 && parts[0] === 'entry') return { name: 'entry', params: {} };
   if (parts.length === 1 && parts[0] === 'settings') return { name: 'settings', params: {} };
@@ -58,17 +64,20 @@ function resolveRoute(hash) {
 // --- Шапка, вкладки, уведомления ----------------------------------------
 
 function markActiveTab(name) {
+  const tabName = TAB_ALIASES[name] ?? name;
   for (const tab of tabs) {
-    const active = tab.dataset.tab === name;
+    const active = tab.dataset.tab === tabName;
     tab.classList.toggle('tabbar__item--active', active);
     if (active) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
 }
 
+// Двухколоночная раскладка шаблона нужна и «Сравнению» (§10 контракта):
+// таблица «было/стало/Δ» тоже выигрывает от лишней ширины на десктопе.
 function markLayout(name) {
   if (!shellEl) return;
-  shellEl.classList.toggle('app-shell--figure', name === 'figure');
+  shellEl.classList.toggle('app-shell--figure', name === 'figure' || name === 'compare');
 }
 
 export function setHeaderStatus(text, tone) {

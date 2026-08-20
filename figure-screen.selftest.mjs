@@ -450,7 +450,17 @@ await step('T15: «#/» — «Фигура» по умолчанию, табба
   assert.doesNotMatch(html, /data-tab="cheatsheet"|data-tab="entry"|data-tab="history"/, 'в таббаре T15 остаются только Фигура, Размеры, Настройки');
   const subtabs = figureScreen.figureSubtabs('figure');
   assert.equal(subtabs.children.length, 2);
-  assert.equal(subtabs.children[1].getAttribute('aria-disabled'), 'true');
+  assert.equal(subtabs.children[0].href, '#/');
+  assert.ok(subtabs.children[0].classList.contains('subtabs__item--active'));
+  assert.equal(subtabs.children[1].href, '#/compare');
+  assert.equal(subtabs.children[1].classList.contains('subtabs__item--active'), false);
+});
+
+await step('T16: под-вкладка «Сравнение» подсвечивается своим активным маршрутом', () => {
+  const subtabs = figureScreen.figureSubtabs('compare');
+  assert.equal(subtabs.children[0].classList.contains('subtabs__item--active'), false);
+  assert.ok(subtabs.children[1].classList.contains('subtabs__item--active'));
+  assert.equal(subtabs.children[1].getAttribute('aria-current'), 'page');
 });
 
 await step('сторож: экран read-only и окрашивает Δ только результатом asof.delta()', () => {

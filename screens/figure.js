@@ -434,21 +434,28 @@ export function createSheetController({ host, getPoint, onSaved }) {
   return { open, close, destroy, isOpen: () => sheet !== null };
 }
 
-// Хелпер остаётся общим для T16, но до появления маршрута compare вторая
-// под-вкладка намеренно не является ссылкой.
+// Общий хелпер для «Фигуры» (T12) и «Сравнения» (T16, §14 контракта:
+// «полосу под-вкладок рисует общий хелпер из screens/figure.js»).
 export function figureSubtabs(active = 'figure') {
   const nav = el('nav', 'subtabs');
   nav.setAttribute('aria-label', 'Вид фигуры');
 
+  // '#/' — стартовый маршрут «Фигуры» (§2 контракта), не '#/figure':
+  // отдельного роута под фигуру в таблице §2 нет.
   const figure = el('a', 'subtabs__item', 'Фигура');
-  figure.href = '#/figure';
+  figure.href = '#/';
   if (active === 'figure') {
     figure.classList.add('subtabs__item--active');
     figure.setAttribute('aria-current', 'page');
   }
 
-  const compare = el('span', 'subtabs__item subtabs__item--disabled', 'Сравнение');
-  compare.setAttribute('aria-disabled', 'true');
+  const compare = el('a', 'subtabs__item', 'Сравнение');
+  compare.href = '#/compare';
+  if (active === 'compare') {
+    compare.classList.add('subtabs__item--active');
+    compare.setAttribute('aria-current', 'page');
+  }
+
   nav.append(figure, compare);
   return nav;
 }
