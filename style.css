@@ -1312,6 +1312,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* От 56rem экран уже даёт двухколоночный layout (см. .figure-layout) —
+   места на −/+ и числовое поле хватает, слайдер лишний. */
+@media (min-width: 56rem) {
+  .sheet__slider,
+  .sheet__range {
+    display: none;
+  }
+}
+
 .sheet__error {
   margin: 0;
   color: var(--danger);
