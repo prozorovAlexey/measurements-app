@@ -85,6 +85,65 @@ await step('отсутствующие и повреждённые ключи in
   assert.equal(result.__proto__.value, 7);
 });
 
+await step('T14: очередь участвует в срезе наравне с index.json, при равенстве дня побеждает', () => {
+  const index = {
+    series: {
+      waist_who: [{ date: '2026-08-10', value: 88, protocol_version: 1 }]
+    }
+  };
+
+  // Очередь несёт более свежую дату, чем index.json, — обязана победить.
+  const newerPending = { '2026-08-16': { waist_who: { value: 85, protocol_version: 1 } } };
+  assert.deepEqual(sliceAt(index, '2026-08-17', newerPending).waist_who, {
+    value: 85,
+    date: '2026-08-16',
+    protocolVersion: 1,
+    ageDays: 1,
+    pending: true
+  });
+
+  // Тот же день, что и в index.json, — при равенстве побеждает очередь, она новее.
+  const samedayPending = { '2026-08-10': { waist_who: { value: 87, protocol_version: 1 } } };
+  assert.equal(sliceAt(index, '2026-08-10', samedayPending).waist_who.pending, true);
+  assert.equal(sliceAt(index, '2026-08-10', samedayPending).waist_who.value, 87);
+
+  // index.json новее очереди (более свежая точка уже доехала) — очередь не отбрасывает её.
+  const olderPending = { '2026-08-05': { waist_who: { value: 70, protocol_version: 1 } } };
+  const result = sliceAt(index, '2026-08-17', olderPending);
+  assert.equal(result.waist_who.pending, false);
+  assert.equal(result.waist_who.value, 88);
+
+  // Ключ, которого нет ни в series, ни в latest, но есть в очереди — не должен теряться.
+  const onlyPending = { '2026-08-17': { hip: { value: 96, protocol_version: 1 } } };
+  assert.deepEqual(sliceAt(index, '2026-08-17', onlyPending).hip, {
+    value: 96,
+    date: '2026-08-17',
+    protocolVersion: 1,
+    ageDays: 0,
+    pending: true
+  });
+
+  // За горизонтом среза очередь не участвует, как и обычные точки series.
+  const futurePending = { '2026-08-20': { hip: { value: 96, protocol_version: 1 } } };
+  assert.equal(sliceAt(index, '2026-08-17', futurePending).hip, null);
+
+  // pending по умолчанию не ломает прежнее поведение (T11).
+  assert.deepEqual(sliceAt(index, '2026-08-17'), sliceAt(index, '2026-08-17', null));
+  assert.deepEqual(sliceAt(index, '2026-08-17', {}), sliceAt(index, '2026-08-17', null));
+});
+
+await step('T14: даты из очереди входят в sliceDates — чип сегодняшнего числа не ждёт index.json', () => {
+  const index = { series: { weight: [{ date: '2026-08-01', value: 80, protocol_version: 1 }] } };
+  const pending = {
+    '2026-08-17': { waist_who: { value: 85, protocol_version: 1 } },
+    '2026-08-01': { hip: { value: 96, protocol_version: 1 } }, // уже есть в series — не дублируется
+    'мусор': { waist_who: { value: 1 } }, // не дата — отбрасывается
+    '2026-08-18': {} // без единого значения — не считается днём среза
+  };
+  assert.deepEqual(sliceDates(index, pending), ['2026-08-01', '2026-08-17']);
+  assert.deepEqual(sliceDates(index), ['2026-08-01'], 'без pending поведение T11 не меняется');
+});
+
 await step('даты срезов уникальны и отсортированы по возрастанию', () => {
   const index = {
     series: {

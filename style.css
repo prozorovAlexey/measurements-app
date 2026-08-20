@@ -12,6 +12,10 @@
   --warn: #9a5b00;
   --danger: #c02626;
   --ok: #14713f;
+  /* Значение из очереди не ошибочное и не устаревшее — оно ещё не доехало
+     (T14, §10 контракта). Единственный тон, который значит «ожидает
+     отправки»; --ok/--stale/--error сюда не годятся. */
+  --pending: #6d5bd0;
   --accent-strong: #1073af;
   --fig-fill: #dceff7;
   --fig-stroke: #176e9f;
@@ -46,6 +50,7 @@
     --warn: #e2a44f;
     --danger: #ff7070;
     --ok: #52c98a;
+    --pending: #a79bf0;
     --accent-strong: #71c8f2;
     --fig-fill: #203b49;
     --fig-stroke: #79c6e8;
@@ -843,6 +848,18 @@ body {
   color: var(--surface);
 }
 
+/* T14: дата появилась только из очереди, index.json её ещё не видел. */
+.chip--pending {
+  border-color: var(--pending);
+  color: var(--pending);
+}
+
+.chip--pending.chip--active {
+  background: var(--pending);
+  border-color: var(--pending);
+  color: var(--surface);
+}
+
 .figure-layout,
 .figure-summary {
   min-width: 0;
@@ -1091,6 +1108,12 @@ body {
    ей семантический зелёный или красный тон. */
 .delta--flat {
   color: var(--muted);
+}
+
+/* T14: значение из очереди — «ожидает отправки», а не измеренное и не
+   устаревшее. Единственное место в приложении, красящее этим тоном. */
+.pending {
+  color: var(--pending);
 }
 
 .fig-actions {

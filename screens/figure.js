@@ -7,8 +7,8 @@ import { delta, sliceAt, sliceDates } from '../asof.js';
 import { figureMeasurements, getMeasurement, loadCachedCatalog, loadCatalog, protocolVersion } from '../catalog.js';
 import { silhouette } from '../figure.js';
 import { readFile } from '../github.js';
-import { enqueue, flush, isPersistent, listJobs } from '../queue.js';
-import { buildSession, sessionFileName } from '../session.js';
+import { enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntries } from '../queue.js';
+import { buildSession } from '../session.js';
 import {
   getIndexCache,
   getProfile,
@@ -19,7 +19,6 @@ import {
 export const title = 'Фигура';
 
 const INDEX_PATH = 'index.json';
-const DATA_DIR = 'data';
 // §7.5 спеки: цена быстрого ввода — один повтор вместо трёх, помечается словами.
 const QUICK_NOTE = 'быстрый ввод, один повтор';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -58,6 +57,7 @@ const CALLOUT_SIDE = new Map([
 let mountToken = 0;
 let state = null;
 let mountedRoot = null;
+let offQueue = null;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -140,9 +140,9 @@ function previousDay(value) {
   return date.toISOString().slice(0, 10);
 }
 
-function changeFor(index, entry, current) {
+function changeFor(index, entry, current, pending) {
   const before = previousDay(current?.date);
-  const previous = before ? pointOf(sliceAt(index, before), entry.key) : null;
+  const previous = before ? pointOf(sliceAt(index, before, pending), entry.key) : null;
   return delta(previous, current, entry);
 }
 
@@ -375,9 +375,12 @@ async function saveSheet() {
 
   let id;
   try {
-    id = await enqueue({
-      path: `${DATA_DIR}/${sessionFileName(session.date, [])}`,
-      content: JSON.stringify(session, null, 2),
+    // enqueueEntry (T14) склеивает несколько значений одного дня в один
+    // файл сессии — голая постановка в очередь из T6 писала бы каждое
+    // значение отдельным файлом.
+    id = await enqueueEntry({
+      date: session.date,
+      entry: session.entries[0],
       message: `Быстрый ввод: ${sheet.entry.label} ${session.date}`
     });
   } catch (error) {
@@ -431,7 +434,7 @@ export function figureSubtabs(active = 'figure') {
   return nav;
 }
 
-function buildDateStrip(dates, selectedDate) {
+function buildDateStrip(dates, selectedDate, pendingDates) {
   const section = el('section', 'fig-dates');
   section.setAttribute('aria-label', 'Дата среза');
 
@@ -445,6 +448,9 @@ function buildDateStrip(dates, selectedDate) {
     } else {
       chip.setAttribute('aria-pressed', 'false');
     }
+    // T14: чип сегодняшнего числа обязан появиться до пересборки index.json
+    // и в офлайне (§7.5 спеки) — источник этих дат queue.pendingEntries().
+    if (pendingDates.has(date)) chip.classList.add('chip--pending');
     chip.addEventListener('click', () => {
       if (state === null || state.selectedDate === date) return;
       state.selectedDate = date;
@@ -514,7 +520,9 @@ function buildCallout(entry, point, node) {
   name.setAttribute('text-anchor', left ? 'end' : 'start');
   name.textContent = entry.label;
 
-  const reading = svgEl('text', 'fig-guide__reading');
+  const reading = svgEl('text', measured && point.pending
+    ? 'fig-guide__reading pending'
+    : 'fig-guide__reading');
   reading.setAttribute('x', textX);
   reading.setAttribute('y', node.y + 10);
   reading.setAttribute('text-anchor', left ? 'end' : 'start');
@@ -625,7 +633,7 @@ function buildEmptyState() {
   return card;
 }
 
-function buildRow(entry, point, index) {
+function buildRow(entry, point, index, pending) {
   const row = el('div', point ? 'mrow' : 'mrow mrow--missing');
   row.dataset.key = entry.key;
   row.setAttribute('role', 'button');
@@ -649,11 +657,15 @@ function buildRow(entry, point, index) {
     );
   } else {
     const amount = el('strong', 'mrow__amount', formatMeasurement(point.value, entry.unit));
-    const when = el('span', stale(entry, point) ? 'mrow__when mrow__when--stale' : 'mrow__when');
-    when.textContent = formatDate(point.date) || 'дата неизвестна';
+    // T14: значение из очереди не подтверждено — «ожидает отправки» вместо
+    // даты, единственный тон для этого случая — .pending (§10 контракта).
+    const when = el('span', point.pending
+      ? 'mrow__when pending'
+      : (stale(entry, point) ? 'mrow__when mrow__when--stale' : 'mrow__when'));
+    when.textContent = point.pending ? 'Ожидает отправки' : (formatDate(point.date) || 'дата неизвестна');
     reading.append(amount, when);
 
-    const change = changeFor(index, entry, point);
+    const change = changeFor(index, entry, point, pending);
     const changeText = formatDelta(change, entry.unit);
     if (changeText) {
       const changeNode = el('span', `mrow__delta delta delta--${change.tone}`, changeText);
@@ -666,7 +678,7 @@ function buildRow(entry, point, index) {
   return row;
 }
 
-function buildGroups(measurements, slice, index) {
+function buildGroups(measurements, slice, index, pending) {
   const byKey = new Map(measurements.map((entry) => [entry.key, entry]));
   const fragment = [];
 
@@ -675,7 +687,7 @@ function buildGroups(measurements, slice, index) {
     section.append(el('h2', null, group.title));
     for (const key of group.keys) {
       const entry = byKey.get(key);
-      if (entry) section.append(buildRow(entry, pointOf(slice, key), index));
+      if (entry) section.append(buildRow(entry, pointOf(slice, key), index, pending));
     }
     fragment.push(section);
   }
@@ -750,11 +762,14 @@ function paint() {
     return;
   }
 
-  const dates = sliceDates(state.index);
+  const pending = state.pending;
+  const dates = sliceDates(state.index, pending);
   if (!dates.includes(state.selectedDate)) state.selectedDate = dates.at(-1) ?? null;
-  if (dates.length > 0) nodes.push(buildDateStrip(dates, state.selectedDate));
+  if (dates.length > 0) {
+    nodes.push(buildDateStrip(dates, state.selectedDate, new Set(Object.keys(pending))));
+  }
 
-  const slice = state.selectedDate ? sliceAt(state.index, state.selectedDate) : {};
+  const slice = state.selectedDate ? sliceAt(state.index, state.selectedDate, pending) : {};
   state.slice = slice;
   const measured = state.measurements.filter((entry) => pointOf(slice, entry.key)).length;
   const empty = measured === 0;
@@ -764,7 +779,7 @@ function paint() {
 
   const summary = el('div', 'figure-summary');
   summary.append(empty ? buildEmptyState() : buildKpis(slice));
-  summary.append(...buildGroups(state.measurements, slice, state.index));
+  summary.append(...buildGroups(state.measurements, slice, state.index, pending));
   summary.append(buildActions(state.loading));
   layout.append(summary);
   nodes.push(layout);
@@ -828,9 +843,26 @@ function handleOnline() {
   requestRefresh();
 }
 
+// T14: оверлей очереди — чип сегодняшней даты и значение из шторки обязаны
+// появиться сразу после сохранения и в офлайне, до пересборки index.json
+// Action'ом (§7.5 спеки). Подписка на очередь переживает флаки сети: любая
+// её мутация (постановка, отправка, провал) перерисовывает экран.
+async function refreshPending(token) {
+  let pending;
+  try {
+    pending = await pendingEntries();
+  } catch {
+    return;
+  }
+  if (outdated(token)) return;
+  state.pending = pending;
+  paint();
+}
+
 export async function render(root, params) {
   const token = ++mountToken;
   window.removeEventListener('online', handleOnline);
+  if (offQueue) { offQueue(); offQueue = null; }
   if (mountedRoot) mountedRoot.classList.remove('figure-screen');
   const cache = getIndexCache();
   const profile = getProfile();
@@ -854,6 +886,7 @@ export async function render(root, params) {
     slice: {},
     sheet: null,
     profile,
+    pending: {},
     catalogReady: cachedCatalog.length > 0,
     error: null,
     loading: true
@@ -862,12 +895,15 @@ export async function render(root, params) {
   // Listener ставится до первой сети: неудачную загрузку каталога можно
   // повторить событием online, не перезагружая страницу.
   window.addEventListener('online', handleOnline);
+  offQueue = onQueueChange(() => { void refreshPending(token); });
   paint();
   void loadScreenData(token);
+  void refreshPending(token);
 }
 
 export function destroy() {
   window.removeEventListener('online', handleOnline);
+  if (offQueue) { offQueue(); offQueue = null; }
   if (mountedRoot) mountedRoot.classList.remove('figure-screen');
   mountedRoot = null;
   mountToken += 1;

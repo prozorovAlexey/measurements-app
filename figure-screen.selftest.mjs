@@ -454,7 +454,10 @@ await step('T12 DOM: #/figure имеет под-вкладку, #/ остаёт�
 
 await step('сторож: экран read-only и окрашивает Δ только результатом asof.delta()', () => {
   const source = readFileSync(new URL('./screens/figure.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /\b(?:writeFile|listFiles|enqueueEntry)\b/);
+  // T13/T14 добавили шторку быстрого ввода — экран больше не read-only
+  // в буквальном смысле, но по-прежнему не трогает GitHub API напрямую:
+  // запись идёт только через enqueueEntry() из queue.js (T14, склейка дня).
+  assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/);
   assert.match(source, /import \{ delta, sliceAt, sliceDates \} from '\.\.\/asof\.js'/);
   assert.equal((source.match(/\bdelta\s*\(/g) ?? []).length, 1, 'ровно один вызов asof.delta()');
   assert.equal((source.match(/change\.tone/g) ?? []).length, 1, 'тон класса берётся из delta().tone');

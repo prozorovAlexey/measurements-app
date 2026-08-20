@@ -43,18 +43,44 @@ function pointValue(value) {
   return null;
 }
 
+// Точки из очереди (queue.pendingEntries(), T14): { '<date>': { '<key>': { value, protocol_version } } }.
+// Читаются через ту же recordMap, что и index.series/latest — на оба уровня,
+// потому что содержимое в конечном счёте приходит из JSON файла сессии.
+function pendingPointsFor(pending, key) {
+  const points = [];
+  for (const [day, entries] of recordMap(pending)) {
+    const item = recordMap(entries).get(key);
+    if (!item || !Number.isFinite(item.value)) continue;
+    points.push({ date: day, value: item.value, protocol_version: item.protocol_version });
+  }
+  return points;
+}
+
+function pendingKeys(pending) {
+  const keys = new Set();
+  for (const entries of recordMap(pending).values()) {
+    for (const key of recordMap(entries).keys()) keys.add(key);
+  }
+  return keys;
+}
+
 // -> { <key>: { value, date, protocolVersion, ageDays, pending } | null }
-export function sliceAt(index, date) {
+// pending — queue.pendingEntries() (T14) либо null. Запись из очереди
+// участвует в выборе «последнего ≤ date» наравне с index.json; при
+// совпадении даты побеждает очередь — она новее по определению, поэтому
+// её сравнение идёт вторым и не отбрасывает точку при равенстве дня.
+export function sliceAt(index, date, pending = null) {
   const targetDay = epochDay(date);
   const series = recordMap(index?.series);
   const latest = recordMap(index?.latest);
-  const keys = new Set([...series.keys(), ...latest.keys()]);
+  const keys = new Set([...series.keys(), ...latest.keys(), ...pendingKeys(pending)]);
   const result = new Map();
 
   for (const key of keys) {
     const points = series.get(key);
     let selected = null;
     let selectedDay = null;
+    let selectedPending = false;
 
     if (targetDay !== null && Array.isArray(points)) {
       for (const point of points) {
@@ -70,6 +96,24 @@ export function sliceAt(index, date) {
 
         selected = point;
         selectedDay = pointDay;
+        selectedPending = false;
+      }
+    }
+
+    if (targetDay !== null) {
+      for (const point of pendingPointsFor(pending, key)) {
+        const pointDay = epochDay(point.date);
+        if (
+          pointDay === null
+          || pointDay > targetDay
+          || (selectedDay !== null && pointDay < selectedDay)
+        ) {
+          continue;
+        }
+
+        selected = point;
+        selectedDay = pointDay;
+        selectedPending = true;
       }
     }
 
@@ -78,7 +122,7 @@ export function sliceAt(index, date) {
       date: selected.date,
       protocolVersion: protocolVersion(selected.protocol_version),
       ageDays: targetDay - selectedDay,
-      pending: false
+      pending: selectedPending
     }) : null);
   }
 
@@ -88,7 +132,10 @@ export function sliceAt(index, date) {
 }
 
 // -> ['YYYY-MM-DD', …] по возрастанию, без дублей.
-export function sliceDates(index) {
+// Даты из очереди (T14) входят в список: чип сегодняшнего числа обязан
+// появиться от первой же сохранённой записи, до пересборки index.json
+// и в офлайне (§7.5 спеки).
+export function sliceDates(index, pending = null) {
   const dates = new Set();
 
   for (const points of recordMap(index?.series).values()) {
@@ -98,6 +145,13 @@ export function sliceDates(index) {
         dates.add(point.date);
       }
     }
+  }
+
+  for (const [day, entries] of recordMap(pending)) {
+    if (epochDay(day) === null) continue;
+    const hasValue = Array.from(recordMap(entries).values())
+      .some((item) => item && Number.isFinite(item.value));
+    if (hasValue) dates.add(day);
   }
 
   return Array.from(dates).sort();

@@ -230,8 +230,9 @@ await step('сторож: оба входа в шторку вызывают о�
   assert.match(calloutBody, /openSheet\(entry\.key\)/, 'выноска обязана звать openSheet()');
   assert.match(rowBody, /openSheet\(entry\.key\)/, 'строка списка обязана звать openSheet()');
 
-  assert.doesNotMatch(source, /\b(?:writeFile|listFiles|enqueueEntry)\b/, 'запись идёт только через enqueue() из T6');
-  assert.match(source, /import \{ enqueue, flush, isPersistent, listJobs \} from '\.\.\/queue\.js'/);
+  assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/, 'запись идёт только через очередь queue.js');
+  assert.doesNotMatch(source, /\benqueue\(/, 'T14: склейка дня работает только через enqueueEntry(), не через голый enqueue()');
+  assert.match(source, /import \{ enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntries \} from '\.\.\/queue\.js'/);
 });
 
 await step('строка списка открывает шторку с протоколом и ссылкой в историю', async () => {

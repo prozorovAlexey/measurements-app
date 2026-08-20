@@ -24,6 +24,7 @@ import { sessionFileName } from './session.js';
 const DB_NAME = 'bm-queue';
 const DB_VERSION = 1;
 const STORE = 'jobs';
+const DATA_DIR = 'data';
 
 // 'data/2026-08-14--2.json' -> день сессии, по нему подбирается свободное имя.
 const SESSION_NAME = /^(\d{4}-\d{2}-\d{2})(?:--\d+)?\.json$/i;
@@ -187,6 +188,113 @@ export async function removeJob(id) {
   const removed = await drop(key);
   notify();
   return removed !== false;
+}
+
+// ===== Склейка дня и оверлей (T14, §7.5 спеки) ============================
+// «Все значения одного дня — один срез»: восемь значений, внесённых по
+// одному, обязаны доехать одним файлом сессии, а не восемью. Склейка идёт
+// только по заданиям, ещё НЕ ушедшим в repo B — задание в статусе 'sending'
+// не трогаем: его PUT уже может быть в пути, и дописать в отправляемое
+// содержимое значило бы потерять запись. Такая запись просто заводит новое
+// задание; sessionFileName разведёт файлы по --N при отправке (§6.1).
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function currentTimeStamp() {
+  const now = new Date();
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+}
+
+// entry: { key, raw, value, unit, protocol_version, note } — одна запись §6.1.
+// Существующее неотправленное задание того же дня получает ещё одну запись
+// в content.entries (повторный ключ заменяется последним значением — шторку
+// открывают дважды, когда ошиблись, и это не два разных замера). Иначе
+// заводится новое задание с минимальной сессией быстрого ввода: условия
+// шторка не спрашивает никогда (§7.5 спеки), поэтому здесь всегда дефолты.
+export async function enqueueEntry({ date, entry, message }) {
+  const day = requireText(date, 'дата записи');
+  if (!entry || typeof entry !== 'object' || typeof entry.key !== 'string' || entry.key.trim() === '') {
+    throw new Error('Внутренняя ошибка очереди: запись замера не задана.');
+  }
+  const commitMessage = requireText(message, 'текст коммита');
+  const record = { ...entry, key: entry.key.trim() };
+
+  let target = null;
+  for (const job of await listJobs()) {
+    if (job.status === 'sending') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(job.content);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object' || parsed.date !== day || !Array.isArray(parsed.entries)) continue;
+    // Идём по возрастанию id — последний найденный является самым свежим
+    // заданием этого дня, в него и доливаем.
+    target = { job, parsed };
+  }
+
+  if (target) {
+    const entries = target.parsed.entries.filter((item) => item?.key !== record.key);
+    entries.push(record);
+    await update({ ...target.job, content: JSON.stringify({ ...target.parsed, entries }, null, 2) });
+    notify();
+    return target.job.id;
+  }
+
+  const session = {
+    date: day,
+    time: currentTimeStamp(),
+    protocol_version: record.protocol_version,
+    conditions: { fasted: false, post_void: false, hours_since_training: null },
+    entries: [record]
+  };
+  return enqueue({
+    path: `${DATA_DIR}/${sessionFileName(day, [])}`,
+    content: JSON.stringify(session, null, 2),
+    message: commitMessage
+  });
+}
+
+// -> { '<date>': { '<key>': { value, protocol_version, jobId, status } } }
+// Только задания, ещё лежащие в очереди — отправленное снимается с неё,
+// а его данные приходят к экрану уже через index.json. Питает оверлей среза
+// в asof.js: без него чип сегодняшней даты и значение из шторки не появились
+// бы до пересборки index.json Action'ом (30–60 с) и не появились бы вовсе
+// в офлайне (§7.5 спеки).
+export async function pendingEntries() {
+  const byDate = new Map();
+
+  for (const job of await listJobs()) {
+    let parsed;
+    try {
+      parsed = JSON.parse(job.content);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.date !== 'string' || !Array.isArray(parsed.entries)) continue;
+
+    if (!byDate.has(parsed.date)) byDate.set(parsed.date, new Map());
+    const byKey = byDate.get(parsed.date);
+    for (const item of parsed.entries) {
+      if (!item || typeof item.key !== 'string' || !Number.isFinite(item.value)) continue;
+      // Порядок — по возрастанию id задания, поэтому при дублирующемся ключе
+      // на ту же дату (два задания одного дня — редкий случай, когда первое
+      // застряло в 'sending') побеждает более позднее действие пользователя.
+      byKey.set(item.key, {
+        value: item.value,
+        protocol_version: Number.isInteger(item.protocol_version) ? item.protocol_version : null,
+        jobId: job.id,
+        status: job.status
+      });
+    }
+  }
+
+  const result = new Map();
+  for (const [day, byKey] of byDate) result.set(day, Object.fromEntries(byKey));
+  return Object.fromEntries(result);
 }
 
 // ===== Отправка ===========================================================

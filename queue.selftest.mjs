@@ -492,6 +492,133 @@ await step('flush, начатый после enqueue, видит новое за
   assert.equal((await queue.listJobs()).find((item) => item.id === id), undefined, 'задание не отправлено');
 });
 
+// ===== T14: склейка дня и оверлей ==========================================
+
+function entryFixture(key, value, overrides = {}) {
+  return { key, raw: [value], value, unit: 'cm', protocol_version: 1, note: '', ...overrides };
+}
+
+await step('T14: enqueueEntry на новый день заводит одно задание с минимальной сессией', async () => {
+  await reset();
+  const id = await queue.enqueueEntry({
+    date: DAY,
+    entry: entryFixture('waist_who', 86),
+    message: 'Быстрый ввод'
+  });
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].id, id);
+  assert.equal(jobs[0].path, `data/${DAY}.json`);
+
+  const parsed = JSON.parse(jobs[0].content);
+  assert.equal(parsed.date, DAY);
+  assert.deepEqual(parsed.conditions, { fasted: false, post_void: false, hours_since_training: null },
+    'шторка не спрашивает условия — записывать их со слов, которых не было, нельзя');
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0].key, 'waist_who');
+});
+
+await step('T14: восемь значений одного дня, внесённых по одному, склеиваются в одно задание', async () => {
+  await reset();
+  const keys = ['waist_who', 'hip', 'chest', 'neck', 'thigh', 'calf', 'wrist', 'weight'];
+  let lastId = null;
+  for (const key of keys) {
+    lastId = await queue.enqueueEntry({ date: DAY, entry: entryFixture(key, 50), message: `Быстрый ввод: ${key}` });
+  }
+
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1, 'восемь значений разошлись по нескольким заданиям');
+  assert.equal(jobs[0].id, lastId);
+  const parsed = JSON.parse(jobs[0].content);
+  assert.equal(parsed.entries.length, 8);
+  assert.deepEqual(parsed.entries.map((item) => item.key).sort(), keys.slice().sort());
+
+  const result = await queue.flush();
+  assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
+  assert.deepEqual(wrote(), [`data/${DAY}.json`], 'восемь значений обязаны доехать одним файлом');
+  assert.equal(JSON.parse(bodyText(puts()[0])).entries.length, 8);
+});
+
+await step('T14: повторный ключ в пределах одного задания заменяется последним значением', async () => {
+  await reset();
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 87), message: 'Быстрый ввод' });
+
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1);
+  const parsed = JSON.parse(jobs[0].content);
+  assert.equal(parsed.entries.length, 1, 'два тапа по одному замеру — не два разных замера');
+  assert.equal(parsed.entries[0].value, 87);
+});
+
+await step('T14: другой день не трогает задание прошлого дня', async () => {
+  await reset();
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ date: '2026-08-15', entry: entryFixture('waist_who', 90), message: 'Быстрый ввод' });
+
+  assert.equal((await queue.listJobs()).length, 2, 'разные дни обязаны остаться разными заданиями');
+});
+
+await step('T14: задание failed всё ещё принимает довесок — само не поменяет статус', async () => {
+  await reset({ token: null });
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.flush();
+  assert.equal((await queue.listJobs())[0].status, 'failed');
+
+  storage.set(store.KEYS.token, TOKEN);
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 1, 'провалившееся задание — не повод заводить отдельный файл');
+  assert.equal(JSON.parse(jobs[0].content).entries.length, 2);
+
+  assert.deepEqual(await queue.flush(), { sent: 1, failed: 0, errors: [] });
+});
+
+await step('T14: задание в статусе sending не получает довесок — уходит в отдельный файл', async () => {
+  await reset();
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+
+  // Первый PUT искусственно зависает, чтобы поймать задание в статусе sending —
+  // ровно тот момент, когда его исходящая запись уже может быть в пути (§7 контракта).
+  let releasePut = null;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(init.method ?? 'GET').toUpperCase() === 'PUT') {
+      await new Promise((resolve) => { releasePut = resolve; });
+    }
+    return original(url, init);
+  };
+
+  const flushing = queue.flush();
+  for (let i = 0; i < 30 && !releasePut; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.ok(releasePut, 'первый PUT не завис — тест не поймал состояние sending');
+  assert.equal((await queue.listJobs())[0].status, 'sending');
+
+  await queue.enqueueEntry({ date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+  assert.equal((await queue.listJobs()).length, 2, 'sending-задание не должно получать довесок');
+
+  releasePut();
+  await flushing;
+  globalThis.fetch = original;
+  await queue.flush();
+
+  assert.deepEqual(wrote().sort(), [`data/${DAY}--2.json`, `data/${DAY}.json`]);
+  assert.deepEqual(await queue.listJobs(), []);
+});
+
+await step('pendingEntries: форма по дате и ключу, снимается вместе с отправкой', async () => {
+  await reset();
+  const id = await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ date: '2026-08-15', entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+
+  const pending = await queue.pendingEntries();
+  assert.deepEqual(Object.keys(pending).sort(), ['2026-08-15', DAY].sort());
+  assert.deepEqual(pending[DAY].waist_who, { value: 86, protocol_version: 1, jobId: id, status: 'pending' });
+
+  await queue.flush();
+  assert.deepEqual(await queue.pendingEntries(), {}, 'отправленные задания не должны оставаться в оверлее');
+});
+
 // ===== Сторожа инвариантов ================================================
 
 const SOURCE = readFileSync(new URL('./queue.js', import.meta.url), 'utf8');
