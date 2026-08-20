@@ -82,9 +82,15 @@ function createElement(tag) {
   node.removeEventListener = (type, handler) => {
     listeners.set(type, (listeners.get(type) ?? []).filter((item) => item !== handler));
   };
-  node.dispatch = (type) => {
+  node.dispatch = (type, init = {}) => {
     for (const handler of (listeners.get(type) ?? []).slice()) {
-      handler({ type, target: node, currentTarget: node });
+      handler({
+        type,
+        target: node,
+        currentTarget: node,
+        preventDefault() {},
+        ...init
+      });
     }
   };
 
@@ -124,9 +130,9 @@ globalThis.window = {
   }
 };
 
-function dispatchWindow(type) {
+function dispatchWindow(type, init = {}) {
   for (const handler of (windowListeners.get(type) ?? []).slice()) {
-    handler({ type });
+    handler({ type, preventDefault() {}, ...init });
   }
 }
 globalThis.document = {
@@ -227,7 +233,7 @@ const FULL_INDEX = {
 
 const EMPTY_INDEX = { generated_at: '2026-08-19T12:00:00Z', latest: {}, series: {} };
 
-async function renderScreen(index) {
+async function renderScreen(index, profile = null) {
   figureScreen.destroy();
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
@@ -235,6 +241,7 @@ async function renderScreen(index) {
     data: index,
     fetchedAt: '2026-08-19T12:00:00Z'
   }));
+  if (profile) storage.set(store.KEYS.profile, JSON.stringify(profile));
   githubReply = index;
   const root = createElement('main');
   root.className = 'screen';
@@ -428,6 +435,61 @@ await step('T12 DOM: девять выносок, SVG использует кл�
   assert.ok(body.getAttribute('d')?.startsWith('M '));
   assert.equal(body.getAttribute('fill'), null, 'цвет не должен быть литералом в SVG');
   assert.equal(body.getAttribute('stroke'), null, 'цвет не должен быть литералом в SVG');
+});
+
+await step('подробности веса: клик открывает годовой график и показывает изменение', async () => {
+  const root = await renderScreen(FULL_INDEX);
+  const weight = byClass(root, 'kpi--weight')[0];
+  assert.equal(weight.getAttribute('role'), 'button');
+  assert.equal(weight.getAttribute('aria-haspopup'), 'dialog');
+  weight.dispatch('click');
+
+  const detail = firstByClass(root, 'metric-detail--weight');
+  assert.ok(detail, 'окно веса не открылось');
+  assert.equal(detail.getAttribute('role'), 'dialog');
+  assert.equal(firstByClass(detail, 'metric-detail__title').textContent, 'Вес за 12 месяцев');
+  assert.equal(byClass(detail, 'sparkline__line').length, 1);
+  assert.match(firstByClass(detail, 'metric-detail__change').textContent, /−0,3 кг за период/);
+  assert.match(firstByClass(detail, 'metric-detail__note').textContent, /2 замера/);
+});
+
+await step('подробности ИМТ: Enter открывает диапазоны и персональный вес для роста', async () => {
+  const root = await renderScreen(FULL_INDEX);
+  const bmi = byClass(root, 'kpi--bmi')[0];
+  bmi.dispatch('keydown', { key: 'Enter' });
+
+  const detail = firstByClass(root, 'metric-detail--bmi');
+  assert.ok(detail, 'окно ИМТ не открылось с клавиатуры');
+  assert.equal(byClass(detail, 'metric-range').length, 4);
+  assert.equal(firstByClass(detail, 'metric-range__marker').textContent, 'Ваш ИМТ 24,6');
+  assert.match(firstByClass(detail, 'metric-detail__personal').textContent, /59,9–80,7 кг/);
+
+  dispatchWindow('keydown', { key: 'Escape' });
+  assert.equal(byClass(root, 'metric-detail').length, 0, 'Escape не закрыл окно');
+});
+
+await step('подробности WHR: порог зависит от пола и пересчитан в сантиметры талии', async () => {
+  const root = await renderScreen(FULL_INDEX);
+  byClass(root, 'kpi--whr')[0].dispatch('click');
+
+  const detail = firstByClass(root, 'metric-detail--whr');
+  assert.ok(detail, 'окно WHR не открылось');
+  assert.match(firstByClass(detail, 'metric-detail__eyebrow').textContent, /мужского профиля/);
+  assert.equal(firstByClass(detail, 'metric-range__marker').textContent, 'Ваш WHR 0,87');
+  assert.match(firstByClass(detail, 'metric-detail__personal').textContent, /порог соответствует талии 90 см/);
+  assert.match(firstByClass(detail, 'metric-detail__personal').textContent, /на 3 см ниже порога/);
+});
+
+await step('подробности WHR: женский профиль использует порог 0,85', async () => {
+  const root = await renderScreen(FULL_INDEX, { sex: 'female' });
+  byClass(root, 'kpi--whr')[0].dispatch('click');
+
+  const detail = firstByClass(root, 'metric-detail--whr');
+  assert.match(firstByClass(detail, 'metric-detail__eyebrow').textContent, /женского профиля/);
+  assert.equal(firstByClass(detail, 'metric-range__marker').textContent, 'Ваш WHR 0,87');
+  assert.match(firstByClass(detail, 'metric-range--current').children[1].textContent, /≥ 0,85/);
+  assert.match(firstByClass(detail, 'metric-detail__personal').textContent, /порог соответствует талии 85 см/);
+  assert.match(firstByClass(detail, 'metric-detail__personal').textContent, /на 2 см выше порога/);
 });
 
 await step('T12 DOM: пустой индекс показывает empty-state, силуэт и 15 прочерков', async () => {

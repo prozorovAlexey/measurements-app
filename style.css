@@ -1043,6 +1043,247 @@ body {
   color: var(--muted);
 }
 
+.kpi--interactive {
+  position: relative;
+  padding-right: calc(var(--gap) * 1.45);
+  cursor: pointer;
+  user-select: none;
+}
+
+.kpi--interactive::after {
+  content: '›';
+  position: absolute;
+  top: 50%;
+  right: calc(var(--gap) / 2);
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.kpi--interactive:active {
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .kpi--interactive:hover {
+    border-color: var(--accent-strong);
+  }
+}
+
+/* Подробности KPI: персональный маркер — главный визуальный сигнал,
+   а сетка графика продолжает язык измерительной бумаги. */
+
+.metric-detail__scrim {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.metric-detail {
+  --metric-detail-accent: var(--accent-strong);
+  width: 100%;
+  max-width: 36rem;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: calc(var(--gap) * 1.25);
+  padding-bottom: calc(var(--gap) * 1.5 + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 0.25rem solid var(--metric-detail-accent);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--sh-card);
+}
+
+.metric-detail--bmi {
+  --metric-detail-accent: var(--ok);
+}
+
+.metric-detail--whr {
+  --metric-detail-accent: var(--warn);
+}
+
+.metric-detail__head,
+.metric-detail__hero,
+.metric-detail__axis,
+.metric-range {
+  display: flex;
+  align-items: center;
+}
+
+.metric-detail__head {
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.metric-detail__eyebrow {
+  display: block;
+  color: var(--metric-detail-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metric-detail__title {
+  margin: 0.1rem 0 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.metric-detail__close {
+  flex: 0 0 var(--tap);
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.metric-detail__hero {
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.metric-detail__hero-value {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.metric-detail__change {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-detail__change--up {
+  color: var(--danger);
+}
+
+.metric-detail__change--down {
+  color: var(--ok);
+}
+
+.metric-detail__chart {
+  padding: var(--gap);
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 52%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 52%, transparent) 1px, transparent 1px);
+  background-size: 2rem 100%, 100% 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.metric-detail__chart .sparkline {
+  height: 8rem;
+  margin: 0;
+}
+
+.metric-detail__chart .sparkline__line--current {
+  stroke: var(--metric-detail-accent);
+}
+
+.metric-detail__axis {
+  justify-content: space-between;
+  gap: var(--gap);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-detail__axis span:last-child {
+  text-align: right;
+}
+
+.metric-detail__summary,
+.metric-detail__personal,
+.metric-detail__note,
+.metric-detail__empty {
+  margin: 0;
+}
+
+.metric-detail__summary {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-detail__personal {
+  padding: var(--gap);
+  background: color-mix(in srgb, var(--metric-detail-accent) 10%, var(--surface));
+  border-left: 0.2rem solid var(--metric-detail-accent);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+}
+
+.metric-detail__note,
+.metric-detail__empty {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.metric-ranges {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.metric-range {
+  min-height: var(--tap);
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.2rem var(--gap);
+  padding: calc(var(--gap) / 1.5) var(--gap);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.metric-range--current {
+  background: color-mix(in srgb, var(--metric-detail-accent) 10%, var(--surface));
+  border-color: var(--metric-detail-accent);
+}
+
+.metric-range__label {
+  font-weight: 600;
+}
+
+.metric-range__value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-range__marker {
+  flex: 1 0 100%;
+  color: var(--metric-detail-accent);
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+@media (min-width: 36rem) {
+  .metric-detail__scrim {
+    align-items: center;
+    padding: var(--gap);
+  }
+
+  .metric-detail {
+    border: 1px solid var(--border);
+    border-top: 0.25rem solid var(--metric-detail-accent);
+    border-radius: var(--radius);
+  }
+}
+
 /* Размеры T15 (§7.7). Формулы и округления — sizes.js; здесь только
    раскладка карточки. Дефолтов нет: .sizecard__missing называет замер
    словами вместо цифры (§14 контракта). */

@@ -1,6 +1,6 @@
-// Read-only экран фигуры (T12, §7.5 спеки).
+// Экран фигуры (T12, §7.5 спеки).
 // Срез и окраска Δ приходят только из asof.js; экран не знает про файлы
-// сессий и не имеет пути к их созданию или изменению.
+// сессий и пишет быстрый ввод только через очередь.
 
 import { setHeaderStatus, toast } from '../app.js';
 import { delta, sliceAt, sliceDates } from '../asof.js';
@@ -9,6 +9,7 @@ import { silhouette } from '../figure.js';
 import { readFile } from '../github.js';
 import { enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntries } from '../queue.js';
 import { buildSession } from '../session.js';
+import { sparkline } from '../sparkline.js';
 import {
   getIndexCache,
   getProfile,
@@ -603,7 +604,17 @@ function buildFigureCard(measurements, slice, profile, empty) {
 }
 
 function buildKpi(label, value, sub, tone) {
-  const card = el('article', `kpi${tone ? ` kpi--${tone}` : ''}`);
+  const card = el('article', `kpi kpi--interactive${tone ? ` kpi--${tone}` : ''}`);
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+  card.setAttribute('aria-haspopup', 'dialog');
+  card.setAttribute('aria-label', `Подробнее: ${label}`);
+  card.addEventListener('click', () => state?.detailCtrl?.open(tone, card));
+  card.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    state?.detailCtrl?.open(tone, card);
+  });
   card.append(
     el('span', 'kpi__label', label),
     el('strong', value === '—' ? 'kpi__value kpi__value--missing' : 'kpi__value', value),
@@ -645,6 +656,256 @@ function buildKpis(slice) {
     )
   );
   return grid;
+}
+
+function oneYearBefore(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCFullYear(date.getUTCFullYear() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function weightPointsForYear(index, pending, endDate) {
+  const startDate = oneYearBefore(endDate);
+  if (!startDate) return [];
+  const result = [];
+  const seen = new Set();
+  for (const date of sliceDates(index, pending)) {
+    if (date < startDate || date > endDate) continue;
+    const point = pointOf(sliceAt(index, date, pending), 'weight');
+    if (!point || point.date !== date || seen.has(point.date)) continue;
+    seen.add(point.date);
+    result.push({
+      date: point.date,
+      value: point.value,
+      protocol_version: point.protocolVersion
+    });
+  }
+  return result;
+}
+
+function detailHead(title, eyebrow, onClose) {
+  const head = el('header', 'metric-detail__head');
+  const copy = el('div');
+  copy.append(
+    el('span', 'metric-detail__eyebrow', eyebrow),
+    el('h2', 'metric-detail__title', title)
+  );
+  const close = el('button', 'metric-detail__close', '×');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Закрыть подробности');
+  close.addEventListener('click', onClose);
+  head.append(copy, close);
+  return { head, close };
+}
+
+function referenceRow(label, range, current, marker) {
+  const row = el('li', current ? 'metric-range metric-range--current' : 'metric-range');
+  row.append(
+    el('span', 'metric-range__label', label),
+    el('span', 'metric-range__value', range)
+  );
+  if (current && marker) row.append(el('span', 'metric-range__marker', marker));
+  return row;
+}
+
+function buildWeightDetail(onClose) {
+  const endDate = state?.selectedDate;
+  const points = weightPointsForYear(state?.index, state?.pending, endDate);
+  const card = el('section', 'metric-detail metric-detail--weight');
+  const { head, close } = detailHead('Вес за 12 месяцев', 'Динамика', onClose);
+  card.append(head);
+
+  if (points.length === 0) {
+    card.append(el('p', 'metric-detail__empty', 'За этот период замеров веса нет.'));
+    return { card, close };
+  }
+
+  const first = points[0];
+  const last = points.at(-1);
+  const change = last.value - first.value;
+  const hasChange = points.length > 1;
+  const sign = change > 0 ? '+' : change < 0 ? '−' : '';
+  const amount = `${sign}${formatMeasurement(Math.abs(change), 'kg')}`;
+  const summary = el('div', 'metric-detail__hero');
+  summary.append(
+    el('strong', 'metric-detail__hero-value', formatMeasurement(last.value, 'kg')),
+    el(
+      'span',
+      `metric-detail__change${hasChange && change > 0 ? ' metric-detail__change--up' : hasChange && change < 0 ? ' metric-detail__change--down' : ''}`,
+      hasChange ? `${amount} за период` : 'Нужен ещё один замер'
+    )
+  );
+  card.append(summary);
+
+  const chartBox = el('div', 'metric-detail__chart');
+  const chart = sparkline(points, { width: 560, height: 128 });
+  chart.setAttribute(
+    'aria-label',
+    `Вес с ${formatDate(first.date)} по ${formatDate(last.date)}: с ${formatMeasurement(first.value, 'kg')} до ${formatMeasurement(last.value, 'kg')}`
+  );
+  chartBox.append(chart);
+  card.append(chartBox);
+
+  const axis = el('div', 'metric-detail__axis');
+  axis.append(
+    el('span', null, `${formatDate(first.date)} · ${formatMeasurement(first.value, 'kg')}`),
+    el('span', null, `${formatDate(last.date)} · ${formatMeasurement(last.value, 'kg')}`)
+  );
+  card.append(axis, el('p', 'metric-detail__note', `${points.length} ${points.length === 1 ? 'замер' : points.length < 5 ? 'замера' : 'замеров'} в выбранном годовом окне.`));
+  return { card, close };
+}
+
+function buildBmiDetail(onClose) {
+  const weight = pointOf(state?.slice, 'weight');
+  const height = pointOf(state?.slice, 'height');
+  const bmi = weight && height && height.value > 0
+    ? weight.value / ((height.value / 100) ** 2)
+    : null;
+  const card = el('section', 'metric-detail metric-detail--bmi');
+  const { head, close } = detailHead('Индекс массы тела', 'Ориентиры для взрослых', onClose);
+  card.append(head);
+
+  if (bmi === null) {
+    card.append(el('p', 'metric-detail__empty', 'Добавьте рост и вес, чтобы увидеть персональный ориентир.'));
+  } else {
+    card.append(el(
+      'p',
+      'metric-detail__summary',
+      `${formatMeasurement(weight.value, 'kg')} при росте ${formatMeasurement(height.value, 'cm')} — ИМТ ${formatNumber(bmi, 1)}.`
+    ));
+  }
+
+  const ranges = el('ul', 'metric-ranges');
+  ranges.append(
+    referenceRow('Недостаточный вес', 'до 18,5', bmi !== null && bmi < 18.5, bmi === null ? '' : `Ваш ИМТ ${formatNumber(bmi, 1)}`),
+    referenceRow('Нормальный диапазон', '18,5–24,9', bmi !== null && bmi >= 18.5 && bmi < 25, bmi === null ? '' : `Ваш ИМТ ${formatNumber(bmi, 1)}`),
+    referenceRow('Избыточный вес', '25,0–29,9', bmi !== null && bmi >= 25 && bmi < 30, bmi === null ? '' : `Ваш ИМТ ${formatNumber(bmi, 1)}`),
+    referenceRow('Ожирение', '30,0 и выше', bmi !== null && bmi >= 30, bmi === null ? '' : `Ваш ИМТ ${formatNumber(bmi, 1)}`)
+  );
+  card.append(ranges);
+
+  if (height && height.value > 0) {
+    const heightM2 = (height.value / 100) ** 2;
+    card.append(el(
+      'p',
+      'metric-detail__personal',
+      `При вашем росте нормальному диапазону ИМТ соответствует примерно ${formatNumber(18.5 * heightM2, 1)}–${formatNumber(24.9 * heightM2, 1)} кг.`
+    ));
+  }
+  card.append(el('p', 'metric-detail__note', 'ИМТ — скрининговый ориентир, а не диагноз: он не различает мышечную и жировую массу. Диапазоны — классификация ВОЗ для взрослых.'));
+  return { card, close };
+}
+
+function buildWhrDetail(onClose) {
+  const waist = pointOf(state?.slice, 'waist_who');
+  const hip = pointOf(state?.slice, 'hip');
+  const whr = waist && hip && hip.value > 0 ? waist.value / hip.value : null;
+  const female = state?.profile?.sex === 'female';
+  const threshold = female ? 0.85 : 0.90;
+  const sexLabel = female ? 'женского' : 'мужского';
+  const card = el('section', 'metric-detail metric-detail--whr');
+  const { head, close } = detailHead('Талия / бёдра', `WHR для ${sexLabel} профиля`, onClose);
+  card.append(head);
+
+  if (whr === null) {
+    card.append(el('p', 'metric-detail__empty', 'Добавьте талию WHO и обхват бёдер, чтобы увидеть персональный ориентир.'));
+  } else {
+    card.append(el(
+      'p',
+      'metric-detail__summary',
+      `${formatMeasurement(waist.value, 'cm')} / ${formatMeasurement(hip.value, 'cm')} = ${formatNumber(whr, 2)}.`
+    ));
+  }
+
+  const ranges = el('ul', 'metric-ranges');
+  ranges.append(
+    referenceRow('Ниже порога', `< ${formatNumber(threshold, 2)}`, whr !== null && whr < threshold, whr === null ? '' : `Ваш WHR ${formatNumber(whr, 2)}`),
+    referenceRow('Скрининговый порог', `≥ ${formatNumber(threshold, 2)}`, whr !== null && whr >= threshold, whr === null ? '' : `Ваш WHR ${formatNumber(whr, 2)}`)
+  );
+  card.append(ranges);
+
+  if (waist && hip && hip.value > 0) {
+    const thresholdWaist = threshold * hip.value;
+    const difference = waist.value - thresholdWaist;
+    const position = difference < 0 ? 'ниже' : difference > 0 ? 'выше' : 'на уровне';
+    const differenceText = difference === 0 ? '' : ` на ${formatMeasurement(Math.abs(difference), 'cm')}`;
+    card.append(el(
+      'p',
+      'metric-detail__personal',
+      `При ваших бёдрах ${formatMeasurement(hip.value, 'cm')} порог соответствует талии ${formatMeasurement(thresholdWaist, 'cm')}. Сейчас талия${differenceText} ${position} порога.`
+    ));
+  }
+  card.append(el('p', 'metric-detail__note', 'WHR — отношение талии WHO к бёдрам. Порог ВОЗ указывает на существенно повышенный метаболический риск, но не заменяет медицинскую оценку.'));
+  return { card, close };
+}
+
+function buildMetricDetail(kind, onClose) {
+  const scrim = el('div', 'sheet__scrim metric-detail__scrim');
+  scrim.addEventListener('click', (event) => {
+    if (event.target === scrim) onClose();
+  });
+  const detail = kind === 'weight'
+    ? buildWeightDetail(onClose)
+    : kind === 'bmi'
+      ? buildBmiDetail(onClose)
+      : buildWhrDetail(onClose);
+  detail.card.setAttribute('role', 'dialog');
+  detail.card.setAttribute('aria-modal', 'true');
+  detail.card.setAttribute('aria-label', firstText(detail.card, 'metric-detail__title'));
+  scrim.append(detail.card);
+  return { scrim, close: detail.close };
+}
+
+function firstText(root, className) {
+  const pending = [...root.children];
+  while (pending.length > 0) {
+    const node = pending.shift();
+    if (node.classList?.contains(className)) return node.textContent;
+    pending.push(...node.children);
+  }
+  return '';
+}
+
+export function createMetricDetailController({ host }) {
+  let kind = null;
+  let trigger = null;
+  let active = true;
+
+  function close() {
+    if (!active || !kind) return;
+    kind = null;
+    host.replaceChildren();
+    window.removeEventListener('keydown', handleKeydown);
+    trigger?.focus?.();
+    trigger = null;
+  }
+
+  function handleKeydown(event) {
+    if (event.key === 'Escape') close();
+  }
+
+  function open(nextKind, nextTrigger = null) {
+    if (!active || !['weight', 'bmi', 'whr'].includes(nextKind)) return;
+    if (kind) window.removeEventListener('keydown', handleKeydown);
+    kind = nextKind;
+    trigger = nextTrigger;
+    const detail = buildMetricDetail(kind, close);
+    host.replaceChildren(detail.scrim);
+    window.addEventListener('keydown', handleKeydown);
+    detail.close.focus?.();
+  }
+
+  function destroy() {
+    window.removeEventListener('keydown', handleKeydown);
+    active = false;
+    kind = null;
+    trigger = null;
+    host.replaceChildren();
+  }
+
+  return { open, close, destroy, isOpen: () => kind !== null };
 }
 
 function buildEmptyState() {
@@ -900,17 +1161,20 @@ export async function render(root, params) {
   // обновление данных (§7.5: шторка не должна закрываться сама по себе).
   const mainHost = el('div', 'figure-main');
   const sheetHost = el('div', 'sheet-host');
-  root.append(mainHost, sheetHost);
+  const detailHost = el('div', 'metric-detail-host');
+  root.append(mainHost, sheetHost, detailHost);
   state = {
     token,
     root,
     mainHost,
     sheetHost,
+    detailHost,
     measurements: cachedCatalog.length > 0 ? figureMeasurements() : [],
     index: cache && isRecord(cache.data) ? cache.data : null,
     selectedDate: null,
     slice: {},
     sheetCtrl: null,
+    detailCtrl: null,
     profile,
     pending: {},
     catalogReady: cachedCatalog.length > 0,
@@ -922,6 +1186,7 @@ export async function render(root, params) {
     getPoint: (key) => pointOf(state.slice, key),
     onSaved: () => {}
   });
+  state.detailCtrl = createMetricDetailController({ host: detailHost });
 
   // Listener ставится до первой сети: неудачную загрузку каталога можно
   // повторить событием online, не перезагружая страницу.
@@ -936,6 +1201,7 @@ export function destroy() {
   window.removeEventListener('online', handleOnline);
   if (offQueue) { offQueue(); offQueue = null; }
   if (state?.sheetCtrl) state.sheetCtrl.destroy();
+  if (state?.detailCtrl) state.detailCtrl.destroy();
   if (mountedRoot) mountedRoot.classList.remove('figure-screen');
   mountedRoot = null;
   mountToken += 1;
