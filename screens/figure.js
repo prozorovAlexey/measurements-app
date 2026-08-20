@@ -217,27 +217,12 @@ function protocolLines(measurement) {
   return lines;
 }
 
-function openSheet(key) {
-  if (state === null) return;
-  const entry = getMeasurement(key);
-  if (!entry) return;
-  const point = pointOf(state.slice, key);
-  state.sheet = { key, entry, point, draft: seedDraft(entry, point), saving: false, error: null };
-  paintSheet();
-}
-
-function closeSheet() {
-  if (state === null || !state.sheet) return;
-  state.sheet = null;
-  paintSheet();
-}
-
-function buildSheet(sheet) {
+function buildSheet(sheet, { onClose, onSave }) {
   const { entry, point } = sheet;
 
   const scrim = el('div', 'sheet__scrim');
   scrim.addEventListener('click', (event) => {
-    if (event.target === scrim) closeSheet();
+    if (event.target === scrim) onClose();
   });
 
   const card = el('div', 'sheet');
@@ -318,11 +303,11 @@ function buildSheet(sheet) {
   history.href = `#/history/${encodeURIComponent(entry.key)}`;
   const cancel = el('button', 'btn', 'Отмена');
   cancel.type = 'button';
-  cancel.addEventListener('click', closeSheet);
+  cancel.addEventListener('click', onClose);
   const save = el('button', 'btn btn--primary', sheet.saving ? 'Сохраняю…' : 'Сохранить');
   save.type = 'button';
   save.disabled = sheet.saving;
-  save.addEventListener('click', () => { void saveSheet(); });
+  save.addEventListener('click', onSave);
   actions.append(history, cancel, save);
   card.append(actions);
 
@@ -330,89 +315,123 @@ function buildSheet(sheet) {
   return scrim;
 }
 
-function paintSheet() {
-  if (state === null) return;
-  if (!state.sheet) {
-    state.sheetHost.replaceChildren();
-    return;
-  }
-  state.sheetHost.replaceChildren(buildSheet(state.sheet));
-}
-
+// Переиспользуемый компонент шторки — одна точка входа для двух экранов
+// (T13 «Фигура», T15 «Размеры», §14 контракта: «один компонент с двумя
+// точками вызова, а не два похожих»). Хозяин экрана владеет host-узлом,
+// сообщает шторке, где взять текущую точку среза для «Было N», и получает
+// колбэк onSaved(), чтобы перерисовать свой список — сама шторка ничего
+// не знает про layout экрана, который её открыл.
+//
 // Файл сессии всегда новый (§6.1): очередь T6 умеет только создавать файлы,
 // sha сюда не передаётся никогда — путь к правке существующей сессии
 // физически отсутствует.
-async function saveSheet() {
-  if (state === null || !state.sheet || state.sheet.saving) return;
-  const token = state.token;
-  const sheet = state.sheet;
+export function createSheetController({ host, getPoint, onSaved }) {
+  let sheet = null;
+  let active = true;
 
-  sheet.saving = true;
-  sheet.error = null;
-  paintSheet();
-
-  const now = new Date();
-  const date = todayISO(now);
-
-  let session;
-  try {
-    session = buildSession({
-      date,
-      time: currentTime(now),
-      protocolVersion: protocolVersion(),
-      // Шторка не спрашивает условия — записывать их со слов, которых
-      // не было, значило бы придумать данные (§0 контракта).
-      conditions: { fasted: false, post_void: false, hours_since_training: null },
-      entries: [{ key: sheet.key, raw: [sheet.draft], note: QUICK_NOTE }]
-    });
-  } catch (error) {
-    if (outdated(token)) return;
-    sheet.saving = false;
-    sheet.error = error;
-    paintSheet();
-    return;
+  function paintSheet() {
+    if (!active) return;
+    if (!sheet) {
+      host.replaceChildren();
+      return;
+    }
+    host.replaceChildren(buildSheet(sheet, { onClose: close, onSave: () => { void save(); } }));
   }
 
-  let id;
-  try {
-    // enqueueEntry (T14) склеивает несколько значений одного дня в один
-    // файл сессии — голая постановка в очередь из T6 писала бы каждое
-    // значение отдельным файлом.
-    id = await enqueueEntry({
-      date: session.date,
-      entry: session.entries[0],
-      message: `Быстрый ввод: ${sheet.entry.label} ${session.date}`
-    });
-  } catch (error) {
-    if (outdated(token)) return;
-    sheet.saving = false;
-    sheet.error = error;
+  function open(key) {
+    if (!active) return;
+    const entry = getMeasurement(key);
+    if (!entry) return;
+    const point = getPoint(key);
+    sheet = { key, entry, point, draft: seedDraft(entry, point), saving: false, error: null };
     paintSheet();
-    return;
   }
 
-  await flush();
-  if (outdated(token)) return;
-  const job = (await listJobs()).find((item) => item.id === id);
-  if (outdated(token)) return;
-
-  if (!job) {
-    toast(`Записано: ${formatMeasurement(sheet.draft, sheet.entry.unit)}`, 'ok');
-    state.sheet = null;
+  function close() {
+    if (!active || !sheet) return;
+    sheet = null;
     paintSheet();
-    return;
   }
 
-  if (!isPersistent()) {
-    sheet.saving = false;
-    sheet.error = new Error(`${job.lastError ?? ''} Сессия в очереди, но браузер не дал сохранить её на диск — не закрывай вкладку.`.trim());
+  async function save() {
+    if (!active || !sheet || sheet.saving) return;
+    const current = sheet;
+    current.saving = true;
+    current.error = null;
     paintSheet();
-    return;
+
+    const now = new Date();
+    const date = todayISO(now);
+
+    let session;
+    try {
+      session = buildSession({
+        date,
+        time: currentTime(now),
+        protocolVersion: protocolVersion(),
+        // Шторка не спрашивает условия — записывать их со слов, которых
+        // не было, значило бы придумать данные (§0 контракта).
+        conditions: { fasted: false, post_void: false, hours_since_training: null },
+        entries: [{ key: current.key, raw: [current.draft], note: QUICK_NOTE }]
+      });
+    } catch (error) {
+      if (!active || sheet !== current) return;
+      current.saving = false;
+      current.error = error;
+      paintSheet();
+      return;
+    }
+
+    let id;
+    try {
+      // enqueueEntry (T14) склеивает несколько значений одного дня в один
+      // файл сессии — голая постановка в очередь из T6 писала бы каждое
+      // значение отдельным файлом.
+      id = await enqueueEntry({
+        date: session.date,
+        entry: session.entries[0],
+        message: `Быстрый ввод: ${current.entry.label} ${session.date}`
+      });
+    } catch (error) {
+      if (!active || sheet !== current) return;
+      current.saving = false;
+      current.error = error;
+      paintSheet();
+      return;
+    }
+
+    await flush();
+    if (!active || sheet !== current) return;
+    const job = (await listJobs()).find((item) => item.id === id);
+    if (!active || sheet !== current) return;
+
+    if (!job) {
+      toast(`Записано: ${formatMeasurement(current.draft, current.entry.unit)}`, 'ok');
+      sheet = null;
+      paintSheet();
+      if (onSaved) onSaved();
+      return;
+    }
+
+    if (!isPersistent()) {
+      current.saving = false;
+      current.error = new Error(`${job.lastError ?? ''} Сессия в очереди, но браузер не дал сохранить её на диск — не закрывай вкладку.`.trim());
+      paintSheet();
+      return;
+    }
+
+    toast('Сессия в очереди — отправлю, когда появится связь.', 'stale');
+    sheet = null;
+    paintSheet();
+    if (onSaved) onSaved();
   }
 
-  toast('Сессия в очереди — отправлю, когда появится связь.', 'stale');
-  state.sheet = null;
-  paintSheet();
+  function destroy() {
+    active = false;
+    sheet = null;
+  }
+
+  return { open, close, destroy, isOpen: () => sheet !== null };
 }
 
 // Хелпер остаётся общим для T16, но до появления маршрута compare вторая
@@ -529,11 +548,11 @@ function buildCallout(entry, point, node) {
   reading.textContent = measured ? formatMeasurement(point.value, entry.unit) : '—';
 
   guide.append(hit, line, name, reading);
-  guide.addEventListener('click', () => openSheet(entry.key));
+  guide.addEventListener('click', () => state?.sheetCtrl?.open(entry.key));
   guide.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    openSheet(entry.key);
+    state?.sheetCtrl?.open(entry.key);
   });
   return guide;
 }
@@ -639,11 +658,11 @@ function buildRow(entry, point, index, pending) {
   row.setAttribute('role', 'button');
   row.setAttribute('tabindex', '0');
   row.setAttribute('aria-label', `Внести замер: ${entry.label}`);
-  row.addEventListener('click', () => openSheet(entry.key));
+  row.addEventListener('click', () => state?.sheetCtrl?.open(entry.key));
   row.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    openSheet(entry.key);
+    state?.sheetCtrl?.open(entry.key);
   });
 
   const heading = el('div', 'mrow__heading');
@@ -884,13 +903,18 @@ export async function render(root, params) {
     index: cache && isRecord(cache.data) ? cache.data : null,
     selectedDate: null,
     slice: {},
-    sheet: null,
+    sheetCtrl: null,
     profile,
     pending: {},
     catalogReady: cachedCatalog.length > 0,
     error: null,
     loading: true
   };
+  state.sheetCtrl = createSheetController({
+    host: sheetHost,
+    getPoint: (key) => pointOf(state.slice, key),
+    onSaved: () => {}
+  });
 
   // Listener ставится до первой сети: неудачную загрузку каталога можно
   // повторить событием online, не перезагружая страницу.
@@ -904,6 +928,7 @@ export async function render(root, params) {
 export function destroy() {
   window.removeEventListener('online', handleOnline);
   if (offQueue) { offQueue(); offQueue = null; }
+  if (state?.sheetCtrl) state.sheetCtrl.destroy();
   if (mountedRoot) mountedRoot.classList.remove('figure-screen');
   mountedRoot = null;
   mountToken += 1;

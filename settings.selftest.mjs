@@ -396,11 +396,23 @@ await step('ошибки setToken/clearToken не выдаются за успе
   assert.ok(!toasts().some((text) => text.includes('PAT удалён')), toasts().join(' | '));
 });
 
-await step('§7.4: счётчик открытий и время последнего открытия видны', async () => {
+await step('§7.4/T15: счётчик открытий шпаргалки (этап 1) виден и заморожен', async () => {
   const lastAt = new Date(2026, 7, 14, 9, 12).toISOString();
   const root = await renderScreen({ opens: { count: 7, lastAt } });
-  assert.equal(byClass(root, 'settings-metric')[0]?.textContent, '7');
-  assert.ok(textOf(root).includes('14.08.2026, 09:12'), textOf(root));
+  const legacyBlock = byClass(root, 'settings-metric-block--legacy')[0];
+  assert.ok(legacyBlock, 'блок старого счётчика шпаргалки не найден');
+  assert.equal(byClass(legacyBlock, 'settings-metric')[0]?.textContent, '7');
+  assert.ok(textOf(legacyBlock).includes('14.08.2026, 09:12'), textOf(legacyBlock));
+});
+
+await step('T15: счётчики opens.sizes и opens.app видны отдельно от старого', async () => {
+  const root = await renderScreen({ opens: null });
+  const sizesBlock = byClass(root, 'settings-metric-block--sizes')[0];
+  const appBlock = byClass(root, 'settings-metric-block--app')[0];
+  assert.ok(sizesBlock, 'блок счётчика «Размеры» не найден');
+  assert.ok(appBlock, 'блок счётчика запусков приложения не найден');
+  assert.equal(byClass(sizesBlock, 'settings-metric')[0]?.textContent, '0');
+  assert.equal(byClass(appBlock, 'settings-metric')[0]?.textContent, '0');
 });
 
 await step('T8: экспорт скачивает валидный JSON со всеми файлами сессий', async () => {

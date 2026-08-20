@@ -29,6 +29,13 @@ const FIGURE_ORDER = Object.freeze([
   'biceps_relaxed', 'forearm', 'wrist', 'finger_index',
   'thigh', 'calf', 'foot_length'
 ]);
+// Порядок экрана «Размеры» (§7.7 спеки), а не порядок catalog.json —
+// та же причина, что у FIGURE_ORDER: каталожный порядок и порядок макета
+// не совпадают (T15).
+const OFF_FIGURE_ORDER = Object.freeze([
+  'waist_umbilicus', 'waist_natural', 'biceps_flexed',
+  'foot_width', 'inseam', 'sleeve', 'head_circ'
+]);
 
 let pending = null; // промис загрузки, пока она идёт или уже удалась
 let entries = []; // порядок — строго как в файле, пересортировки нет нигде
@@ -184,6 +191,20 @@ export function figureMeasurements() {
   return FIGURE_ORDER
     .map((key) => index.get(key))
     .filter((item) => item?.show_on_figure === true);
+}
+
+// T15 — семь замеров вне фигуры (§7.7 спеки). В сумме с figureMeasurements()
+// даёт весь каталог без пересечений (§5 контракта).
+export function offFigureMeasurements() {
+  return OFF_FIGURE_ORDER
+    .map((key) => index.get(key))
+    .filter((item) => item?.show_on_figure === false);
+}
+
+// T15 — какие замеры питают карточку размера (§5.4 спеки).
+export function sizeMeasurements(scale) {
+  if (!SIZE_SCALES.has(scale)) return [];
+  return entries.filter((item) => item.size_scale === scale);
 }
 
 // Версия методики для штампа записей сессии (§6.1). До загрузки каталога —

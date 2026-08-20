@@ -440,13 +440,14 @@ await step('T12 DOM: пустой индекс показывает empty-state,
   assert.equal(byClass(root, 'fig-dates').length, 0);
 });
 
-await step('T12 DOM: #/figure имеет под-вкладку, #/ остаётся шпаргалкой', () => {
+await step('T15: «#/» — «Фигура» по умолчанию, таббар трёхвкладочный', () => {
   const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-  assert.match(app, /parts\.length === 0[^\n]+name: 'cheatsheet'/);
-  assert.match(app, /parts\[0\] === 'figure'[^\n]+name: 'figure'/);
-  assert.match(html, /href="#\/figure"\s+data-tab="figure"/);
-  assert.match(html, /href="#\/"\s+data-tab="cheatsheet"/);
+  assert.match(app, /parts\.length === 0[^\n]+name: 'figure'/);
+  assert.doesNotMatch(app, /name: 'cheatsheet'/, 'шпаргалка удалена вместе с T15');
+  assert.match(html, /href="#\/"\s+data-tab="figure"/);
+  assert.match(html, /href="#\/sizes"\s+data-tab="sizes"/);
+  assert.doesNotMatch(html, /data-tab="cheatsheet"|data-tab="entry"|data-tab="history"/, 'в таббаре T15 остаются только Фигура, Размеры, Настройки');
   const subtabs = figureScreen.figureSubtabs('figure');
   assert.equal(subtabs.children.length, 2);
   assert.equal(subtabs.children[1].getAttribute('aria-disabled'), 'true');

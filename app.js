@@ -1,12 +1,12 @@
 // Bootstrap + hash-роутер + монтирование экранов (§2 контракта).
 // Экраны грузятся динамическим import() — каркас не тянет их код заранее.
 
-import { bumpCheatsheetOpens } from './store.js';
+import { bumpOpens } from './store.js';
 import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
-  cheatsheet: () => import('./screens/cheatsheet.js'),
   figure: () => import('./screens/figure.js'),
+  sizes: () => import('./screens/sizes.js'),
   entry: () => import('./screens/entry.js'),
   history: () => import('./screens/history.js'),
   settings: () => import('./screens/settings.js')
@@ -43,10 +43,12 @@ function decodeSegment(segment) {
 }
 
 // null — маршрут неизвестен.
+// T15: дефолт «#/» — «Фигура» (§2 контракта), шпаргалка удалена вместе
+// с отдельным «#/figure».
 function resolveRoute(hash) {
   const parts = normalizeHash(hash).slice(1).split('/').filter(Boolean).map(decodeSegment);
-  if (parts.length === 0) return { name: 'cheatsheet', params: {} };
-  if (parts.length === 1 && parts[0] === 'figure') return { name: 'figure', params: {} };
+  if (parts.length === 0) return { name: 'figure', params: {} };
+  if (parts.length === 1 && parts[0] === 'sizes') return { name: 'sizes', params: {} };
   if (parts.length === 1 && parts[0] === 'entry') return { name: 'entry', params: {} };
   if (parts.length === 1 && parts[0] === 'settings') return { name: 'settings', params: {} };
   if (parts.length === 2 && parts[0] === 'history') return { name: 'history', params: { key: parts[1] } };
@@ -168,10 +170,11 @@ async function mount(route) {
   }
   if (token !== mountToken) return;
 
-  // Счётчик открытий шпаргалки — ровно один раз за загрузку страницы.
+  // opens.app (T15, §2 спеки) — ровно один раз за загрузку страницы,
+  // независимо от того, какой экран открылся первым.
   if (!firstScreenHandled) {
     firstScreenHandled = true;
-    if (route.name === 'cheatsheet') bumpCheatsheetOpens();
+    bumpOpens('app');
   }
 }
 

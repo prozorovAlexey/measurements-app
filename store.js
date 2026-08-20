@@ -7,7 +7,8 @@ export const KEYS = {
   repo: 'bm.repo', // { owner, repo, branch }
   index: 'bm.index_cache', // { data, fetchedAt } fetchedAt — ISO-строка
   catalog: 'bm.catalog_cache', // { data, fetchedAt } то же, для catalog.json
-  opens: 'bm.cheatsheet_opens', // { count, lastAt }
+  opens: 'bm.cheatsheet_opens', // { count, lastAt } — этап 1, после T15 не растёт
+  opensV2: 'bm.opens', // T15 — { sizes: {count,lastAt}, app: {count,lastAt} }
   profile: 'bm.profile' // { sex: 'male' | 'female' }
 };
 
@@ -18,6 +19,7 @@ const DEFAULT_REPO = Object.freeze({
 });
 
 const DEFAULT_OPENS = Object.freeze({ count: 0, lastAt: null });
+const DEFAULT_COUNTER = Object.freeze({ count: 0, lastAt: null });
 const DEFAULT_PROFILE = Object.freeze({ sex: 'male' });
 const FINE_GRAINED_PREFIX = 'github_pat_';
 
@@ -181,6 +183,33 @@ export function bumpCheatsheetOpens() {
   const current = getCheatsheetOpens();
   const next = { count: current.count + 1, lastAt: new Date().toISOString() };
   writeJSON(KEYS.opens, next);
+  return next;
+}
+
+// --- Счётчики гейта opens.sizes / opens.app (T15) -------------------------
+// Отдельный ключ от bm.cheatsheet_opens: старое измерение этапа 1 не
+// переписывается новым, оба видны в настройках (§14 контракта, T15).
+
+function normalizeCounter(value) {
+  if (!isPlainObject(value)) return { ...DEFAULT_COUNTER };
+  const count = Number.isFinite(value.count) && value.count > 0 ? Math.floor(value.count) : 0;
+  return { count, lastAt: nonEmptyString(value.lastAt) ? value.lastAt : null };
+}
+
+export function getOpens() {
+  const stored = readJSON(KEYS.opensV2);
+  const source = isPlainObject(stored) ? stored : {};
+  return {
+    sizes: normalizeCounter(source.sizes),
+    app: normalizeCounter(source.app)
+  };
+}
+
+export function bumpOpens(what) {
+  const current = getOpens();
+  if (what !== 'sizes' && what !== 'app') return current;
+  const next = { ...current, [what]: { count: current[what].count + 1, lastAt: new Date().toISOString() } };
+  writeJSON(KEYS.opensV2, next);
   return next;
 }
 

@@ -781,6 +781,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* T15: три блока гейта §2 в одной карточке (Размеры / запуски / шпаргалка) */
+.settings-metric-block + .settings-metric-block {
+  margin-top: var(--gap);
+  padding-top: var(--gap);
+  border-top: 1px solid var(--border);
+}
+
+.settings-metric-block h3 {
+  margin: 0 0 0.15rem;
+  font-size: var(--fs-small);
+  color: var(--muted);
+  font-weight: 400;
+}
+
 /* Фигура T12 (§7.5)
    Геометрия SVG приходит из figure.js; здесь только раскладка и палитра.
    Ни одного цветового литерала внутри самого SVG нет. */
@@ -1027,6 +1041,50 @@ body {
 
 .kpi__value--missing {
   color: var(--muted);
+}
+
+/* Размеры T15 (§7.7). Формулы и округления — sizes.js; здесь только
+   раскладка карточки. Дефолтов нет: .sizecard__missing называет замер
+   словами вместо цифры (§14 контракта). */
+
+.sizecards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--gap) / 2);
+}
+
+.sizecard h2 {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sizecard__primary {
+  margin: 0;
+  font-size: var(--fs-kpi);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.sizecard__secondary {
+  margin: 0.15rem 0 0;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.sizecard__cm {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.sizecard__missing {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
 }
 
 .fig-empty p,

@@ -794,7 +794,7 @@ await step('чек-лист §10: writeFile вызывается без sha — 
   assert.ok(body.message.includes(entry.todayISO()), `бесполезный commit message: ${body.message}`);
 });
 
-await step('§7.2: успех — уведомление про задержку Action и переход на шпаргалку', async () => {
+await step('§7.2: успех — уведомление про задержку Action и переход на «#/»', async () => {
   const root = await renderScreen({ index: INDEX_NEAR });
   fillReps(blockOf(root, 'waist_who'), ['86,5', '87,0', '86,8']);
   await clickSave(root);
@@ -803,7 +803,7 @@ await step('§7.2: успех — уведомление про задержку
   assert.equal(texts.length, 1, 'уведомления о сохранении нет');
   assert.ok(texts[0].includes('сохранена'), texts[0]);
   assert.ok(/index\.json|десятки секунд/.test(texts[0]), `нет предупреждения о задержке: ${texts[0]}`);
-  assert.equal(globalThis.location.hash, '#/', 'перехода на шпаргалку не случилось');
+  assert.equal(globalThis.location.hash, '#/', 'перехода на дефолтный экран (T15: «Фигура») не случилось');
 });
 
 await step('T6: нет сети — сессия ложится в очередь, а не теряется', async () => {

@@ -17,6 +17,7 @@ import { flush, isPersistent, listJobs, onQueueChange, removeJob } from '../queu
 import {
   clearToken,
   getCheatsheetOpens,
+  getOpens,
   getStoredToken,
   isFineGrainedToken,
   setToken
@@ -124,14 +125,32 @@ function paintToken() {
   card.replaceChildren(el('h2', null, 'Доступ к данным'), field, actions);
 }
 
+// Блок одного счётчика: заголовок, крупное число, время последнего события.
+// modifier — доп. класс поверх settings-metric-block, чтобы отличать три
+// блока в разметке (гейт §2 спеки завязан на T15-приёмку «старый счётчик
+// шпаргалки не потерян»).
+function metricBlock(modifier, heading, count, lastAt, emptyHint) {
+  const block = el('div', `settings-metric-block settings-metric-block--${modifier}`);
+  block.append(el('h3', null, heading));
+  block.append(el('p', 'settings-metric', String(count)));
+  block.append(el('p', 'field__hint', lastAt ? `Последнее: ${formatWhen(lastAt)}` : emptyHint));
+  return block;
+}
+
+// §2 спеки: opens.sizes и opens.app — рабочий гейт с T15. bm.cheatsheet_opens
+// (этап 1) не удаляется и не мигрируется — это уже накопленное измерение,
+// переписать его новым счётчиком значило бы подделать наблюдение (§14 контракта).
 function buildUsage() {
   const card = el('section', 'card settings-usage');
-  const opens = getCheatsheetOpens();
-  card.append(el('h2', null, 'Открытия шпаргалки'));
-  card.append(el('p', 'settings-metric', String(opens.count)));
-  card.append(el('p', 'field__hint', opens.lastAt
-    ? `Последнее открытие: ${formatWhen(opens.lastAt)}`
-    : 'Шпаргалка ещё не открывалась при запуске приложения.'));
+  card.append(el('h2', null, 'Открытия (гейт §2)'));
+
+  const opensV2 = getOpens();
+  card.append(metricBlock('sizes', 'Размеры', opensV2.sizes.count, opensV2.sizes.lastAt, 'Ещё не открывались.'));
+  card.append(metricBlock('app', 'Запуски приложения', opensV2.app.count, opensV2.app.lastAt, 'Ещё не запускалось.'));
+
+  const legacy = getCheatsheetOpens();
+  card.append(metricBlock('legacy', 'Шпаргалка (этап 1, заморожено)', legacy.count, legacy.lastAt, 'Шпаргалка не открывалась.'));
+
   return card;
 }
 

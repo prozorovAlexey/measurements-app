@@ -220,15 +220,17 @@ async function renderScreen(series = FULL_SERIES) {
 
 console.log('Самопроверка T13: screens/figure.js — шторка быстрого ввода');
 
-await step('сторож: оба входа в шторку вызывают одну и ту же функцию', () => {
+await step('сторож: оба входа в шторку зовут один и тот же переиспользуемый компонент', () => {
+  // T15 (§14 контракта): шторку экспортирует figure.js и переиспользует
+  // sizes.js — «один компонент с двумя точками вызова». Открытие живёт
+  // в createSheetController(), а не в отдельной openSheet().
   const source = readFileSync(new URL('./screens/figure.js', import.meta.url), 'utf8');
-  assert.equal(typeof source.match(/\bfunction openSheet\(/g), 'object');
-  assert.equal((source.match(/\bfunction openSheet\(/g) ?? []).length, 1, 'функция открытия шторки должна быть ровно одна');
+  assert.equal((source.match(/export function createSheetController\(/g) ?? []).length, 1, 'шторка обязана быть ровно одним экспортируемым компонентом');
 
   const calloutBody = /function buildCallout\([^)]*\) \{([\s\S]*?)\n  return guide;\n\}/.exec(source)?.[1] ?? '';
   const rowBody = /function buildRow\([^)]*\) \{([\s\S]*?)\n  row\.append\(heading, reading\);/.exec(source)?.[1] ?? '';
-  assert.match(calloutBody, /openSheet\(entry\.key\)/, 'выноска обязана звать openSheet()');
-  assert.match(rowBody, /openSheet\(entry\.key\)/, 'строка списка обязана звать openSheet()');
+  assert.match(calloutBody, /state\?\.sheetCtrl\?\.open\(entry\.key\)/, 'выноска обязана звать sheetCtrl.open()');
+  assert.match(rowBody, /state\?\.sheetCtrl\?\.open\(entry\.key\)/, 'строка списка обязана звать sheetCtrl.open()');
 
   assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/, 'запись идёт только через очередь queue.js');
   assert.doesNotMatch(source, /\benqueue\(/, 'T14: склейка дня работает только через enqueueEntry(), не через голый enqueue()');

@@ -380,7 +380,7 @@ await step('статика: попадание в кэш сеть не трог�
   reset();
   await install();
   netLog.length = 0;
-  const event = fireEvent('fetch', plainRequest('./screens/cheatsheet.js'));
+  const event = fireEvent('fetch', plainRequest('./screens/sizes.js'));
   const response = await event.responded;
   assert.equal(response.status, 200, 'модуль не отдался');
   assert.deepEqual(netLog, [], `сеть спрошена при попадании: ${netLog.join(', ')}`);
