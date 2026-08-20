@@ -4,8 +4,11 @@
 // Правила, которые здесь нельзя нарушать:
 //  - токен берётся исключительно из store.js, никогда не логируется
 //    и никогда не попадает в URL — только в заголовок Authorization;
-//  - каждый GET снабжён 'Cache-Control: no-cache' и параметром _cb,
-//    иначе CDN GitHub отдаёт значение до пяти минут давности (§4 спеки);
+//  - каждый GET снабжён cache: 'no-store' и параметром _cb, иначе CDN GitHub
+//    отдаёт значение до пяти минут давности (§4 спеки). HTTP-заголовок
+//    'Cache-Control' сюда специально не идёт — api.github.com не пускает
+//    его через CORS (нет в Access-Control-Allow-Headers), и он один ломает
+//    вообще все GET из браузера ошибкой 'offline' (нашли 20.08.2026);
 //  - наружу летит только GitHubError с конкретным kind, голого Error нет
 //    ни в одной ветке — экраны показывают текст ошибки как есть.
 
@@ -128,8 +131,15 @@ async function getJson(path) {
   url.searchParams.set('_cb', String(Date.now()));
   const response = await send(url.toString(), {
     method: 'GET',
+    // 'Cache-Control' как HTTP-заголовок сюда не идёт: api.github.com не
+    // отдаёт его в Access-Control-Allow-Headers префлайта (проверено вживую
+    // 20.08.2026), поэтому браузер молча блокирует запрос ещё до отправки,
+    // а fetch() падает с TypeError — приложение видит это как «Нет сети»,
+    // хотя сеть есть. cache: 'no-store' (опция fetch, не HTTP-заголовок,
+    // в CORS не участвует) уже держит браузерный HTTP-кэш в стороне,
+    // а _cb в query — уникальный URL на каждый запрос. Обоих достаточно.
     cache: 'no-store',
-    headers: headers(token, { 'Cache-Control': 'no-cache' })
+    headers: headers(token)
   });
   if (!response.ok) throw await errorFor(response);
   return parseJson(response);
