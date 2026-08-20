@@ -1459,6 +1459,7 @@ body {
   max-width: 34rem;
   max-height: 88vh;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: calc(var(--gap) / 2);
