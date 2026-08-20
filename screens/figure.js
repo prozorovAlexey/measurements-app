@@ -24,6 +24,9 @@ const INDEX_PATH = 'index.json';
 const QUICK_NOTE = 'быстрый ввод, один повтор';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const UNIT_LABELS = new Map([['cm', 'см'], ['kg', 'кг']]);
+// Ширина viewBox силуэта (buildFigureCard) — нужна и здесь, чтобы тач-цель
+// выноски (buildCallout) могла дотянуться до края канвы.
+const FIGURE_WIDTH = 360;
 
 const GROUPS = Object.freeze([
   Object.freeze({ title: 'Базовые', keys: Object.freeze(['weight', 'height']) }),
@@ -326,17 +329,29 @@ function buildSheet(sheet, { onClose, onSave }) {
 // Файл сессии всегда новый (§6.1): очередь T6 умеет только создавать файлы,
 // sha сюда не передаётся никогда — путь к правке существующей сессии
 // физически отсутствует.
+// Длительность анимации закрытия (мс) — должна совпадать с sheet-scrim-out/
+// sheet-card-out в style.css: DOM убирается через тот же таймер, а не по
+// animationend (иначе при prefers-reduced-motion, где анимация отключена
+// в CSS, шторка зависла бы навсегда — событие просто не пришло бы).
+export const SHEET_CLOSE_MS = 200;
+
 export function createSheetController({ host, getPoint, onSaved }) {
   let sheet = null;
   let active = true;
+  let mountedScrim = null;
+  let closeTimer = null;
 
-  function paintSheet() {
+  function paintSheet({ animateEnter = false } = {}) {
     if (!active) return;
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     if (!sheet) {
+      mountedScrim = null;
       host.replaceChildren();
       return;
     }
-    host.replaceChildren(buildSheet(sheet, { onClose: close, onSave: () => { void save(); } }));
+    mountedScrim = buildSheet(sheet, { onClose: close, onSave: () => { void save(); } });
+    if (animateEnter) mountedScrim.classList.add('sheet__scrim--enter');
+    host.replaceChildren(mountedScrim);
   }
 
   function open(key) {
@@ -345,13 +360,28 @@ export function createSheetController({ host, getPoint, onSaved }) {
     if (!entry) return;
     const point = getPoint(key);
     sheet = { key, entry, point, draft: seedDraft(entry, point), saving: false, error: null };
-    paintSheet();
+    paintSheet({ animateEnter: true });
   }
 
+  // Закрытие всегда проходит через анимацию выхода — по кнопке «Отмена», по
+  // клику вне карточки и после успешной записи (§4 задания: анимация
+  // закрытия), поэтому save() тоже зовёт close(), а не чистит sheet сама.
   function close() {
     if (!active || !sheet) return;
     sheet = null;
-    paintSheet();
+    const scrimNode = mountedScrim;
+    if (!scrimNode) {
+      host.replaceChildren();
+      return;
+    }
+    scrimNode.classList.remove('sheet__scrim--enter');
+    scrimNode.classList.add('is-closing');
+    closeTimer = setTimeout(() => {
+      closeTimer = null;
+      if (mountedScrim !== scrimNode) return;
+      mountedScrim = null;
+      host.replaceChildren();
+    }, SHEET_CLOSE_MS);
   }
 
   async function save() {
@@ -408,8 +438,7 @@ export function createSheetController({ host, getPoint, onSaved }) {
 
     if (!job) {
       toast(`Записано: ${formatMeasurement(current.draft, current.entry.unit)}`, 'ok');
-      sheet = null;
-      paintSheet();
+      close();
       if (onSaved) onSaved();
       return;
     }
@@ -422,14 +451,14 @@ export function createSheetController({ host, getPoint, onSaved }) {
     }
 
     toast('Сессия в очереди — отправлю, когда появится связь.', 'stale');
-    sheet = null;
-    paintSheet();
+    close();
     if (onSaved) onSaved();
   }
 
   function destroy() {
     active = false;
     sheet = null;
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
   }
 
   return { open, close, destroy, isOpen: () => sheet !== null };
@@ -511,6 +540,20 @@ function buildProfileField(profile) {
   return field;
 }
 
+// Примерная ширина символа кириллицы при font-size 8.5px (fig-guide) —
+// нужна только чтобы прикинуть, докуда тянется текст подсказки: не точный
+// замер (getBBox недоступен до вставки узла в документ), а достаточный
+// запас, чтобы скруглённая подсветка не обрезала длинные подписи вроде
+// «Бицепс расслабл.».
+const CALLOUT_NAME_GLYPH = 5.4;
+const CALLOUT_READING_GLYPH = 6.2;
+
+function calloutTextSpan(label, readingText) {
+  const nameWidth = label.length * CALLOUT_NAME_GLYPH;
+  const readingWidth = readingText.length * CALLOUT_READING_GLYPH;
+  return Math.max(nameWidth, readingWidth, 20);
+}
+
 function buildCallout(entry, point, node) {
   const side = CALLOUT_SIDE.get(entry.key) ?? 'right';
   const left = side === 'left';
@@ -524,16 +567,40 @@ function buildCallout(entry, point, node) {
   const edge = left ? node.x1 : node.x2;
   const end = left ? 54 : 306;
   const textX = left ? 48 : 312;
+  const readingText = measured ? formatMeasurement(point.value, entry.unit) : '—';
 
-  // Тач-цель шире тонкой выноски: прозрачный прямоугольник ловит клик,
-  // сама линия остаётся волосяной (§7.5: тап открывает шторку ввода).
+  // Тач-цель шире тонкой выноски и обязана дотягиваться до края канвы со
+  // стороны подписи: подпись и значение не умещаются в узкий отступ вокруг
+  // textX, а pointer-events на самом тексте выключен (наследуется от
+  // .fig-guide), поэтому раньше кликался только отрезок линии, а не текст
+  // поверх него (§7.5: тап где угодно по выноске открывает шторку ввода).
+  const bodyBound = Math.max(edge, end) + 4;
+  const attachBound = Math.min(edge, end) - 4;
   const hit = svgEl('rect', 'fig-guide__hit');
-  const hitLeft = Math.min(edge, end, textX) - 4;
-  const hitRight = Math.max(edge, end, textX) + 4;
+  const hitLeft = left ? 4 : attachBound;
+  const hitRight = left ? bodyBound : FIGURE_WIDTH - 4;
   hit.setAttribute('x', hitLeft);
   hit.setAttribute('y', node.y - 14);
   hit.setAttribute('width', hitRight - hitLeft);
   hit.setAttribute('height', 30);
+
+  // Мягкая скруглённая подсветка вокруг подписи — визуальная замена грубой
+  // системной рамки фокуса (см. .fig-guide:focus-visible в style.css) и
+  // ориентир при наведении (§4 задания: анимация наведения).
+  const span = calloutTextSpan(entry.label, readingText);
+  const highlightPad = 5;
+  const highlight = svgEl('rect', 'fig-guide__highlight');
+  const highlightLeft = left
+    ? Math.max(2, textX - span - highlightPad)
+    : textX - highlightPad;
+  const highlightRight = left
+    ? textX + highlightPad
+    : Math.min(FIGURE_WIDTH - 2, textX + span + highlightPad);
+  highlight.setAttribute('x', highlightLeft);
+  highlight.setAttribute('y', node.y - 13);
+  highlight.setAttribute('width', highlightRight - highlightLeft);
+  highlight.setAttribute('height', 27);
+  highlight.setAttribute('rx', 6);
 
   const line = svgEl('line');
   line.setAttribute('x1', edge);
@@ -553,9 +620,9 @@ function buildCallout(entry, point, node) {
   reading.setAttribute('x', textX);
   reading.setAttribute('y', node.y + 10);
   reading.setAttribute('text-anchor', left ? 'end' : 'start');
-  reading.textContent = measured ? formatMeasurement(point.value, entry.unit) : '—';
+  reading.textContent = readingText;
 
-  guide.append(hit, line, name, reading);
+  guide.append(hit, highlight, line, name, reading);
   guide.addEventListener('click', () => state?.sheetCtrl?.open(entry.key));
   guide.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -572,7 +639,7 @@ function buildFigureCard(measurements, slice, profile, empty) {
   card.append(buildProfileField(profile));
 
   const svg = svgEl('svg', 'fig-svg');
-  svg.setAttribute('viewBox', '0 0 360 552');
+  svg.setAttribute('viewBox', `0 0 ${FIGURE_WIDTH} 552`);
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-labelledby', 'figure-svg-title');
 

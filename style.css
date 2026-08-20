@@ -947,20 +947,36 @@ body {
   color: var(--fig-guide);
   font-size: 8.5px;
   pointer-events: none;
+  transition: color 160ms ease;
 }
 
 /* Прозрачная тач-цель выноски (T13): линия и текст остаются pointer-events:none,
-   кликабелен только этот прямоугольник — он и открывает шторку. */
+   кликабелен только этот прямоугольник — он и открывает шторку. Ширина
+   доходит до края канвы SVG со стороны подписи, а не до фиксированного
+   отступа: подпись и значение шире узкого паддинга вокруг якоря текста. */
 .fig-guide__hit {
   fill: transparent;
   pointer-events: auto;
   cursor: pointer;
 }
 
+/* Мягкая скруглённая подсветка вокруг подписи — заменяет системную рамку
+   фокуса (.fig-guide:focus-visible ниже) и служит откликом на наведение. */
+.fig-guide__highlight {
+  fill: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0.92);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
 .fig-guide line {
   stroke: currentColor;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
+  transition: stroke-width 160ms ease;
 }
 
 .fig-guide text {
@@ -994,6 +1010,43 @@ body {
 .fig-guide__reading {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* :where(...):focus-visible в базовых стилях рисует прямую рамку — для
+   SVG-выноски это выглядит грубым прямоугольником поверх фигуры (селектор
+   ниже с классом весомее :where() и всегда её перебивает). Вместо рамки —
+   та же подсветка, что и при наведении. */
+.fig-guide:focus-visible {
+  outline: none;
+  color: var(--accent-strong);
+}
+
+.fig-guide:focus-visible .fig-guide__highlight {
+  opacity: 0.22;
+  transform: scale(1);
+}
+
+@media (hover: hover) {
+  .fig-guide:hover {
+    color: var(--accent-strong);
+  }
+
+  .fig-guide:hover .fig-guide__highlight {
+    opacity: 0.14;
+    transform: scale(1);
+  }
+
+  .fig-guide:hover line {
+    stroke-width: 1.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fig-guide,
+  .fig-guide line,
+  .fig-guide__highlight {
+    transition: none;
+  }
 }
 
 .kpi-grid {
@@ -1444,6 +1497,22 @@ body {
 
 /* Шторка быстрого ввода (T13, §7.5) */
 
+@keyframes sheet-scrim-in {
+  from { opacity: 0; }
+}
+
+@keyframes sheet-scrim-out {
+  to { opacity: 0; }
+}
+
+@keyframes sheet-card-in {
+  from { transform: translateY(100%); }
+}
+
+@keyframes sheet-card-out {
+  to { transform: translateY(100%); }
+}
+
 .sheet__scrim {
   position: fixed;
   inset: 0;
@@ -1452,6 +1521,36 @@ body {
   align-items: flex-end;
   justify-content: center;
   background: rgb(15 17 21 / 45%);
+}
+
+/* .sheet__scrim--enter ставится только при открытии (createSheetController),
+   не при каждой перерисовке шторки — иначе анимация въезда повторялась бы
+   на любое изменение состояния (ошибка, «Сохраняю…»). */
+.sheet__scrim--enter {
+  animation: sheet-scrim-in 200ms ease-out;
+}
+
+.sheet__scrim--enter .sheet {
+  animation: sheet-card-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* .is-closing ставит close() перед тем, как через SHEET_CLOSE_MS убрать
+   узел из DOM — длительности здесь и там обязаны совпадать. */
+.sheet__scrim.is-closing {
+  animation: sheet-scrim-out 180ms ease-in forwards;
+}
+
+.sheet__scrim.is-closing .sheet {
+  animation: sheet-card-out 180ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet__scrim--enter,
+  .sheet__scrim--enter .sheet,
+  .sheet__scrim.is-closing,
+  .sheet__scrim.is-closing .sheet {
+    animation: none;
+  }
 }
 
 .sheet {

@@ -191,6 +191,12 @@ async function settle() {
   for (let i = 0; i < 12; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 
+// Закрытие шторки теперь анимированное (SHEET_CLOSE_MS) — узел убирается
+// из DOM таймером в createSheetController, а не сразу по close().
+async function settleSheetClose() {
+  await new Promise((resolve) => { setTimeout(resolve, figureScreen.SHEET_CLOSE_MS + 20); });
+}
+
 function indexWith(series) {
   return { generated_at: new Date().toISOString(), latest: {}, series };
 }
@@ -294,7 +300,8 @@ await step('сохранение создаёт новый файл сессии
   assert.equal(dataFiles.length, before + 1, 'старый файл сессии остался на месте, добавился ровно один новый');
   assert.equal(dataFiles[0].content, '{}', 'существующий файл не переписан');
 
-  // Шторка закрывается сама после подтверждённой записи.
+  // Шторка закрывается сама после подтверждённой записи (с анимацией выхода).
+  await settleSheetClose();
   assert.equal(byClass(root, 'sheet').length, 0);
 });
 
@@ -329,6 +336,7 @@ await step('отмена не отправляет ничего в очеред�
   const cancel = byClass(root, 'sheet__actions')[0].children.find((node) => node.textContent === 'Отмена');
   cancel.dispatch('click');
   await settle();
+  await settleSheetClose();
   assert.equal(byClass(root, 'sheet').length, 0, 'шторка обязана закрыться');
   assert.equal(githubCalls.filter((call) => call.method === 'PUT').length, before, 'отмена не должна писать ничего');
 });
