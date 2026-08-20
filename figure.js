@@ -200,10 +200,13 @@ function geometry(values, measured, figure) {
     18
   );
 
+  // Живот между талией и тазом растёт, но не выше таза — иначе профиль
+  // ловит волну (вверх-вниз-вверх) на сочетаниях, где таз близок к талии.
+  const bellyBulge = clamp(waist * 1.10, waist, Math.max(waist, pelvis));
   const torsoSides = [
     [0.219, chest * 0.86], [0.252, chest * 0.97], [0.278, chest],
     [0.315, chest * 0.945], [0.352, waist * 1.09], [0.392, waist],
-    [0.425, waist * 1.10], [0.448, pelvis], [0.478, glutes],
+    [0.425, bellyBulge], [0.448, pelvis], [0.478, glutes],
     [0.508, glutes * 0.985]
   ];
   const sideAt = (fraction) => (
@@ -223,10 +226,15 @@ function geometry(values, measured, figure) {
     + (handAxis - shoulderAxis)
       * Math.pow(clamp((fraction - 0.214) / 0.316, 0, 1), 1.2)
   );
+  // Предплечье сужается к запястью монотонно: если измеренное запястье
+  // толще дефолтного предплечья, оно не должно раздувать кисть после сужения.
+  const forearmUpper = Math.min(elbow, forearm * 1.02);
+  const forearmLower = Math.min(forearmUpper, forearm * 0.80);
+  const wristWidth = Math.min(forearmLower, wrist);
   const armWidths = [
     [0.214, biceps * 1.06], [0.262, biceps * 1.05], [0.30, biceps],
-    [0.345, biceps * 0.92], [0.383, elbow], [0.43, forearm * 1.02],
-    [0.465, forearm * 0.80], [0.492, wrist]
+    [0.345, biceps * 0.92], [0.383, elbow], [0.43, forearmUpper],
+    [0.465, forearmLower], [0.492, wristWidth]
   ];
   const armGaps = [
     [0.252, 3.0], [0.29, 4.6], [0.345, 6.2], [0.392, 7.0],
