@@ -229,8 +229,8 @@ function geometry(values, measured, figure) {
     [0.465, forearm * 0.80], [0.492, wrist]
   ];
   const armGaps = [
-    [0.252, 1.8], [0.29, 3.4], [0.345, 5.2], [0.392, 6.0],
-    [0.45, 4.5], [0.492, 3.6]
+    [0.252, 3.0], [0.29, 4.6], [0.345, 6.2], [0.392, 7.0],
+    [0.45, 5.6], [0.492, 4.4]
   ];
   const armOuter = (fraction) => Math.min(
     armAxis(fraction) + sample(armWidths, fraction),
