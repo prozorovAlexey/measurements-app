@@ -586,41 +586,133 @@ body {
   margin-top: var(--gap);
 }
 
-/* Ввод сессии (T5, §7.2)
-   Текст протокола стоит над полями и виден всегда: из-за неоднозначности
-   «где именно мерили» и заведён весь проект (§1 спеки). Ни сворачивания,
-   ни подсказки по тапу здесь быть не должно. */
+/* Ввод сессии T26 (§7.2): форма читается как последовательный протокол —
+   подготовка, состав, замеры, условия, сохранение. Нумерация кодирует реальный
+   порядок работы, а не служит декором. Текст landmark/posture остаётся видимым
+   перед полями: именно неоднозначность точки замера была исходной проблемой. */
 
-/* Блоки замеров лежат в своей обёртке, поэтому промежуток задаётся ей:
-   .screen раздаёт gap только собственным детям. */
+.entry-screen,
+.entry-measurements,
 .entry-blocks {
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
+  display: grid;
   gap: var(--gap);
+}
+
+.entry-step,
+.entry-block,
+.entry-empty,
+.entry-notice {
+  min-width: 0;
+  box-shadow: var(--sh-card);
+}
+
+/* Левая линия — маршрут протокола. Все оттенки приходят из токенов T17. */
+.entry-step {
+  padding: 0;
+  overflow: hidden;
+  border-left: 3px solid var(--ac);
+}
+
+.entry-step__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.9375rem 1rem 0.875rem;
+}
+
+.entry-step__marker {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--acs);
+  color: var(--ac);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.entry-step__copy {
+  min-width: 0;
+}
+
+.entry-step__kicker,
+.entry-block__index,
+.entry-reps__legend {
+  display: block;
+  color: var(--text-label);
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.entry-step__head .entry-step__title {
+  margin: 0.1875rem 0 0;
+  color: var(--text-strong);
+  font-size: 1rem;
+}
+
+.entry-step__description {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.entry-step__meta {
+  grid-column: 2;
+  justify-self: start;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-mid);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .entry-rules {
   margin: 0;
-  padding-left: 1.15rem;
-  color: var(--text-muted);
+  padding: 0 1rem 1rem 3.75rem;
+  color: var(--text-mid);
   font-size: var(--fs-small);
+  line-height: 1.45;
+}
+
+.entry-rules li {
+  padding-left: 0.15rem;
 }
 
 .entry-rules li + li {
-  margin-top: 0.2rem;
+  margin-top: 0.375rem;
+}
+
+.entry-rules li::marker {
+  color: var(--ac);
+  font-size: 0.6875rem;
+  font-weight: 700;
 }
 
 .entry-modes {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 1rem;
 }
 
-/* Галочка и радиокнопка вместе с подписью — одна тач-цель не меньше --tap. */
+/* Чекбокс или radio вместе с подписью — единая тач-цель не меньше --tap. */
 .entry-choice {
   display: flex;
   align-items: center;
   gap: 0.625rem;
   min-height: var(--tap);
+  border-radius: var(--r-card);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -633,112 +725,317 @@ body {
   accent-color: var(--ac);
 }
 
+/* Фокус обводит всю подпись: маленькую нативную radio/checkbox видно внутри,
+   но клавиатурному пользователю важна граница полной активной области. */
+.entry-choice:has(input:focus-visible) {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+.entry-mode-card {
+  padding: 0.625rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  color: var(--text-mid);
+  font-size: 0.8125rem;
+}
+
+.entry-mode-card:has(input:checked) {
+  background: var(--acl);
+  border-color: color-mix(in srgb, var(--ac) 45%, var(--border));
+  color: var(--text-strong);
+}
+
+.entry-composition__hint {
+  margin: 0.75rem 1rem 0;
+  line-height: 1.45;
+}
+
 .entry-picker {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 0.25rem;
 }
 
 .entry-picker:not(:empty) {
-  margin-top: calc(var(--gap) / 2);
-  padding-top: calc(var(--gap) / 2);
-  border-top: 1px solid var(--border);
+  margin-top: 0.875rem;
+  padding: 0.75rem 1rem 1rem;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-soft);
 }
 
-.entry-block h2 {
-  margin-bottom: calc(var(--gap) / 3);
+.entry-picker__choice {
+  padding: 0 0.5rem;
+  color: var(--text-mid);
+  font-size: var(--fs-small);
+}
+
+.entry-picker__choice:has(input:checked) {
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+.entry-measurements__intro .entry-step__head {
+  padding-bottom: 0.9375rem;
+}
+
+.entry-block {
+  padding: 0;
+  overflow: hidden;
+  border-left: 3px solid var(--border);
+  transition: border-color 160ms ease;
+}
+
+.entry-block--ready {
+  border-left-color: var(--ac);
+}
+
+.entry-block__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 0.875rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.entry-block__title {
+  min-width: 0;
+}
+
+.entry-block__head .entry-block__name {
+  margin: 0.1875rem 0 0;
+  color: var(--text-strong);
+  font-size: 1rem;
+  line-height: 1.3;
 }
 
 .entry-block__unit {
   margin-left: 0.35rem;
   color: var(--text-muted);
-  font-size: var(--fs-small);
-  font-weight: 400;
+  font-size: 0.71875rem;
+  font-weight: 500;
+}
+
+.entry-block__status {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.entry-block__status--ready {
+  background: var(--acs);
+  color: var(--ac);
+  font-weight: 700;
+}
+
+.entry-protocol-card {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.75rem 1rem 0;
+  padding: 0.6875rem 0.75rem;
+  background: var(--surface-2);
+  border-left: 2px solid var(--line-muted);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
 }
 
 .entry-protocol {
-  margin: 0 0 0.2rem;
-  color: var(--text-muted);
-  font-size: var(--fs-small);
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .entry-reps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(var(--gap) / 2);
-  margin-top: calc(var(--gap) / 2);
+  min-width: 0;
+  margin: 0.875rem 1rem 0;
+  padding: 0;
+  border: 0;
 }
 
-/* Три поля повторов в строку на телефоне, перенос — только если не влезли. */
+.entry-reps__legend {
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.entry-reps__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+  gap: 0.5rem;
+}
+
 .entry-rep {
-  flex: 1 1 5rem;
-  min-width: 4.5rem;
+  min-width: 0;
+}
+
+.entry-field > .label,
+.entry-field > span:first-child {
+  color: var(--text-label);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+}
+
+.entry-field input {
+  background: var(--surface-2);
+  border-color: var(--border-soft);
+}
+
+.entry-field input:focus-visible {
+  background: var(--surface);
+  border-color: var(--ac);
+  box-shadow: 0 0 0 3px var(--acs);
 }
 
 .entry-median {
-  margin: calc(var(--gap) / 2) 0 0;
+  margin: 0.75rem 1rem 0;
+  color: var(--text-strong);
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
 }
 
-/* Медианы ещё нет — та же строка приглушённым цветом, чтобы место под неё
-   не прыгало при вводе. */
+/* Пустая медиана остаётся на месте и явно сообщает, что замер не сделан. */
 .entry-median--empty {
   color: var(--text-muted);
   font-weight: 500;
 }
 
 .entry-warnings {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--gap) / 2);
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 1rem;
 }
 
 .entry-warnings:not(:empty) {
-  margin-top: calc(var(--gap) / 2);
+  margin-top: 0.75rem;
 }
 
-/* Подтверждение отклонения — в рамке того же цвета, что и предупреждение:
-   пока галочка не стоит, сохранение заблокировано (§7.2). */
+.entry-warnings .warn {
+  margin: 0;
+  background: var(--warn-bg);
+  border-color: transparent;
+  line-height: 1.4;
+}
+
+/* Подтверждение отклонения остаётся рядом с предупреждением; пока оно не
+   отмечено, сохранение заблокировано (§7.2). */
 .entry-confirm {
-  padding: 0 calc(var(--gap) / 1.5);
+  padding: 0.5rem 0.625rem;
   border: 1px solid var(--warn-fg);
-  border-radius: calc(var(--radius) / 1.5);
   color: var(--warn-fg);
 }
 
 .entry-note {
-  margin-top: var(--gap);
+  margin: 0.875rem 1rem 1rem;
 }
 
 .entry-datetime {
-  display: flex;
-  gap: calc(var(--gap) / 2);
-}
-
-.entry-datetime .field {
-  flex: 1 1 0;
-  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0 1rem;
 }
 
 .entry-conditions {
-  display: flex;
-  flex-direction: column;
-  margin: calc(var(--gap) / 2) 0;
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.75rem 1rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-card);
+}
+
+.entry-hours {
+  margin: 0 1rem 1rem;
 }
 
 .entry-save .btn {
-  width: 100%;
+  width: calc(100% - 2rem);
+  margin: 0 1rem 1rem;
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--ac) 22%, transparent);
+}
+
+.entry-save .btn:disabled {
+  box-shadow: none;
 }
 
 .entry-messages {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--gap) / 2);
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 1rem;
 }
 
 .entry-messages:not(:empty) {
-  margin-top: var(--gap);
+  margin-bottom: 1rem;
+}
+
+.entry-messages .warn,
+.entry-messages .field__hint {
+  margin: 0;
+}
+
+.entry-empty {
+  padding: 1rem;
+  border-style: dashed;
+  text-align: center;
+}
+
+.entry-empty__title,
+.entry-empty__text {
+  display: block;
+  margin: 0;
+}
+
+.entry-empty__title {
+  color: var(--text-strong);
+  font-size: 0.875rem;
+}
+
+.entry-empty__text {
+  margin-top: 0.25rem;
+}
+
+@media (min-width: 30rem) {
+  .entry-step__head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .entry-step__meta {
+    grid-column: auto;
+    justify-self: end;
+  }
+
+  .entry-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 22rem) {
+  .entry-datetime {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-block__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .entry-block__status {
+    align-self: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-block {
+    transition: none;
+  }
 }
 
 /* Офлайн-очередь в настройках (T6, §7.4)
@@ -749,61 +1046,151 @@ body {
 .queue-list {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--gap) / 2);
-  margin: var(--gap) 0 0;
-  padding: 0;
+  gap: 0.625rem;
+  margin: 0.875rem 0 0;
+  padding: 0 1rem;
   list-style: none;
 }
 
 .queue-job {
-  padding: calc(var(--gap) / 1.5);
+  min-width: 0;
+  padding: 0.75rem 0.75rem 0.75rem 0.875rem;
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) / 1.5);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--pending);
+  border-radius: var(--r-card);
+}
+
+.queue-job--pending {
+  border-left-color: var(--pending);
+}
+
+.queue-job--sending {
+  border-left-color: var(--ac);
+}
+
+.queue-job--failed {
+  border-left-color: var(--tone-bad);
 }
 
 .queue-job p {
-  margin: 0 0 0.2rem;
+  margin: 0;
+}
+
+.queue-job__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--gap) / 2);
 }
 
 /* Имя файла — моноширинным: по нему сверяются с содержимым репозитория. */
 .queue-job__path {
+  min-width: 0;
+  color: var(--text-strong);
   font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace;
   font-size: var(--fs-small);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .queue-job__when {
+  margin-top: 0.25rem !important;
   color: var(--text-muted);
-  font-size: var(--fs-small);
+  font-size: 0.71875rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .queue-job__state {
-  font-weight: 600;
+  flex: 0 0 auto;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .queue-job__state--pending {
-  color: var(--warn-fg);
+  background: color-mix(in srgb, var(--pending) 12%, transparent);
+  color: var(--pending);
 }
 
 .queue-job__state--sending {
+  background: var(--acl);
   color: var(--ac);
 }
 
 .queue-job__state--failed {
+  background: color-mix(in srgb, var(--tone-bad) 12%, transparent);
   color: var(--tone-bad);
 }
 
+.queue-job .queue-job__error {
+  margin-top: 0.625rem;
+  padding: 0.625rem;
+  background: var(--warn-bg);
+  border-color: transparent;
+}
+
 .queue-empty {
-  margin: var(--gap) 0 0;
+  display: grid;
+  grid-template-columns: 0.5rem minmax(0, 1fr);
+  gap: 0.15rem 0.625rem;
+  margin: 0.875rem 1rem 0;
+  padding: 0.875rem;
+  background: var(--acl);
+  border: 1px dashed color-mix(in srgb, var(--ac) 28%, var(--border));
+  border-radius: var(--r-card);
   color: var(--text-muted);
+}
+
+.queue-empty::before {
+  width: 0.5rem;
+  height: 0.5rem;
+  grid-row: 1 / 3;
+  align-self: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone-good) 72%, transparent);
+  content: "";
+}
+
+.queue-empty__title,
+.queue-empty__text {
+  display: block;
+  margin: 0;
+}
+
+.queue-empty__title {
+  color: var(--text-strong);
+  font-size: 0.875rem;
+}
+
+.queue-empty__text {
+  font-size: var(--fs-small);
 }
 
 .queue-actions {
   display: flex;
   flex-wrap: wrap;
   gap: calc(var(--gap) / 2);
-  margin-top: var(--gap);
+}
+
+.queue-actions--job {
+  margin-top: 0.75rem;
+}
+
+.queue-actions--job .btn {
+  flex: 1 1 8rem;
+}
+
+.queue-actions--flush {
+  margin-top: 0.875rem;
+  padding: 0 1rem 1rem;
+}
+
+.queue-actions--flush .btn {
+  width: 100%;
 }
 
 .queue-actions .warn {
@@ -1094,35 +1481,234 @@ body {
   box-shadow: var(--sh-card);
 }
 
-/* Настройки T8 (§7.4) */
+/* Настройки T25 (§7.4): спокойная служебная зона трекера — состояние данных
+   заметнее технических деталей, а все цвета приходят из токенов T17. */
+
+.settings-screen {
+  min-width: 0;
+  display: grid;
+  gap: var(--gap);
+}
+
+.settings-card {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--sh-card);
+}
+
+.settings-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 0.875rem 1rem 0.8125rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.settings-card__titles {
+  min-width: 0;
+}
+
+.settings-card__kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.2rem;
+  color: var(--text-label);
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.065em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.settings-card__kicker::before {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ac) 58%, transparent);
+  content: "";
+}
+
+.settings-card .settings-card__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-card__meta {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-mid);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settings-card__meta--muted {
+  background: var(--surface-2);
+  color: var(--text-mid);
+}
+
+.settings-card__meta--good {
+  background: color-mix(in srgb, var(--tone-good) 12%, transparent);
+  color: var(--tone-good);
+}
+
+.settings-card__meta--pending {
+  background: color-mix(in srgb, var(--pending) 12%, transparent);
+  color: var(--pending);
+}
+
+.settings-card__meta--warning {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+
+.settings-card__intro {
+  margin: 0;
+  padding: 0.875rem 1rem 0;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+
+.settings-field {
+  padding: 0.875rem 1rem 0;
+  gap: 0.375rem;
+}
+
+.settings-field__label {
+  color: var(--text-label);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.settings-token__input {
+  background: var(--surface-2) !important;
+}
+
+.settings-token__input:focus-visible {
+  background: var(--surface) !important;
+}
+
+.settings-field__hint {
+  line-height: 1.45;
+}
+
+.settings-field__warning,
+.settings-notice {
+  background: var(--warn-bg);
+  border-color: transparent;
+}
+
+.settings-notice {
+  margin: 0.875rem 1rem 0;
+}
 
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
   gap: calc(var(--gap) / 2);
-  margin-top: var(--gap);
+  margin: 0;
+  padding: 0.875rem 1rem 1rem;
+}
+
+.settings-actions--token .btn {
+  flex: 1 1 11rem;
+}
+
+.settings-actions--single {
+  margin-top: auto;
+}
+
+.settings-actions--single .btn {
+  width: 100%;
+}
+
+.settings-tools {
+  min-width: 0;
+  display: grid;
+  gap: var(--gap);
+}
+
+.settings-tools .settings-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-usage__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--gap) / 1.5);
+  padding: 0.875rem 1rem 1rem;
+}
+
+.settings-metric-block {
+  min-width: 0;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-card);
+}
+
+.settings-metric-block--legacy {
+  grid-column: 1 / -1;
 }
 
 .settings-metric {
-  margin: 0;
+  margin: 0.25rem 0 0;
   color: var(--ac);
-  font-size: var(--fs-value);
-  font-weight: 600;
+  font-size: clamp(1.5rem, 7vw, 2rem);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1;
 }
 
-/* T15: три блока гейта §2 в одной карточке (Размеры / запуски / шпаргалка) */
-.settings-metric-block + .settings-metric-block {
-  margin-top: var(--gap);
-  padding-top: var(--gap);
-  border-top: 1px solid var(--border);
+.settings-metric-block .field__hint {
+  display: block;
+  margin: 0.375rem 0 0;
+  font-size: 0.6875rem;
 }
 
 .settings-metric-block h3 {
-  margin: 0 0 0.15rem;
-  font-size: var(--fs-small);
-  color: var(--text-muted);
-  font-weight: 400;
+  margin: 0;
+  color: var(--text-label);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+@media (min-width: 30rem) {
+  .settings-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-usage__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .settings-metric-block--legacy {
+    grid-column: auto;
+  }
+
+  .settings-actions--token .btn,
+  .queue-actions--job .btn {
+    flex: 0 0 auto;
+  }
+
+  .queue-actions--flush .btn {
+    width: auto;
+  }
 }
 
 /* Фигура T12 (§7.5)

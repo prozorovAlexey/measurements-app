@@ -202,8 +202,8 @@ function makeCheckbox(text, checked, onChange, className) {
   return { label, input };
 }
 
-function makeRadio(text, checked, onChange) {
-  const label = el('label', 'entry-choice');
+function makeRadio(text, checked, onChange, className = 'entry-choice') {
+  const label = el('label', className);
   const input = document.createElement('input');
   input.type = 'radio';
   input.name = 'entry-mode';
@@ -223,42 +223,71 @@ function makeButton(text, className, onClick) {
 }
 
 function buildNotice(heading, error) {
-  const card = el('section', 'card');
+  const card = el('section', 'card entry-notice');
   card.append(el('h2', null, heading));
   card.append(el('p', 'warn', errorText(error)));
   return card;
 }
 
+// Нумерация — не украшение, а маршрут реального протокола: сначала подготовка,
+// затем состав, сами замеры, условия и только после этого сохранение.
+function buildStepHead(step, kicker, titleText, description, metaText = null) {
+  const head = el('header', 'entry-step__head');
+  head.append(el('span', 'entry-step__marker', pad2(step)));
+
+  const copy = el('div', 'entry-step__copy');
+  copy.append(el('span', 'entry-step__kicker', kicker), el('h2', 'entry-step__title', titleText));
+  if (description) copy.append(el('p', 'entry-step__description', description));
+  head.append(copy);
+
+  if (metaText !== null) head.append(el('span', 'entry-step__meta', metaText));
+  return head;
+}
+
 // ===== Блок замера ========================================================
 
-function buildBlock(measurement) {
+function buildBlock(measurement, index, total) {
   const key = measurement.key;
   const item = state.values.get(key);
 
   const card = el('section', 'card entry-block');
   card.dataset.key = key;
 
-  const head = el('h2', null, measurement.label);
+  const heading = el('header', 'entry-block__head');
+  const title = el('div', 'entry-block__title');
+  title.append(el('span', 'entry-block__index', `Замер ${pad2(index + 1)} / ${pad2(total)}`));
+
+  const head = el('h2', 'entry-block__name', measurement.label);
   const unit = unitLabel(measurement.unit);
   if (unit !== '') head.append(el('span', 'entry-block__unit', unit));
-  card.append(head);
+  title.append(head);
+
+  const statusLine = el('span', 'entry-block__status', 'Не измерено');
+  heading.append(title, statusLine);
+  card.append(heading);
 
   // Протокол — прямо над полями, до единого поля ввода (§7.2 спеки).
-  for (const line of protocolLines(measurement)) card.append(el('p', 'entry-protocol', line));
+  const protocol = el('div', 'entry-protocol-card');
+  for (const line of protocolLines(measurement)) protocol.append(el('p', 'entry-protocol', line));
+  card.append(protocol);
 
   // Полей ровно reps из каталога: три у обхватов, одно у веса и статики.
-  const reps = el('div', 'entry-reps');
+  const reps = el('fieldset', 'entry-reps');
+  reps.append(el('legend', 'entry-reps__legend', measurement.reps === 1 ? 'Результат' : 'Повторы'));
+  const repGrid = el('div', 'entry-reps__grid');
   for (let i = 0; i < measurement.reps; i += 1) {
     const caption = measurement.reps === 1 ? 'Значение' : `Повтор ${i + 1}`;
     const input = makeNumericInput(item.reps[i], (value) => {
       item.reps[i] = value;
       updateBlock(key);
     });
-    reps.append(makeField(caption, input, 'entry-rep'));
+    repGrid.append(makeField(caption, input, 'entry-rep entry-field'));
   }
+  reps.append(repGrid);
   card.append(reps);
 
   const medianLine = el('p', 'entry-median');
+  medianLine.setAttribute('aria-live', 'polite');
   card.append(medianLine);
 
   const warnings = el('div', 'entry-warnings');
@@ -267,9 +296,10 @@ function buildBlock(measurement) {
   const note = makeInput('text', item.note, (value) => {
     item.note = value;
   });
-  card.append(makeField('Заметка (необязательно)', note, 'entry-note'));
+  note.setAttribute('placeholder', 'Например, другая поза или время суток');
+  card.append(makeField('Заметка (необязательно)', note, 'entry-note entry-field'));
 
-  state.blocks.set(key, { card, medianLine, warnings, needsConfirm: false });
+  state.blocks.set(key, { card, medianLine, statusLine, warnings, needsConfirm: false });
   updateBlock(key);
   return card;
 }
@@ -288,6 +318,13 @@ function updateBlock(key) {
     ? 'Медиана: —'
     : `Медиана: ${formatMeasure(value, measurement ? measurement.unit : '')}`;
   refs.medianLine.classList.toggle('entry-median--empty', value === null);
+  const validCount = item.reps.filter((rep) => median([rep]) !== null).length;
+  const complete = value !== null && validCount === item.reps.length;
+  refs.statusLine.textContent = value === null
+    ? 'Не измерено'
+    : (complete ? 'Готово' : `${validCount} из ${item.reps.length}`);
+  refs.statusLine.classList.toggle('entry-block__status--ready', complete);
+  refs.card.classList.toggle('entry-block--ready', complete);
 
   const { warnings } = validateReps(key, item.reps, previousValue(key));
   const nodes = [];
@@ -368,9 +405,14 @@ function updateSave() {
 // ===== Карточки экрана ====================================================
 
 function buildRulesCard() {
-  const card = el('section', 'card');
-  card.append(el('h2', null, 'Правила измерения'));
-  const list = el('ul', 'entry-rules');
+  const card = el('section', 'card entry-step');
+  card.append(buildStepHead(
+    1,
+    'Подготовка',
+    'Правила измерения',
+    'Одинаковые условия делают динамику сравнимой.'
+  ));
+  const list = el('ol', 'entry-rules');
   for (const rule of RULES) list.append(el('li', null, rule));
   card.append(list);
   return card;
@@ -398,7 +440,7 @@ function paintPicker() {
       if (checked) state.selected.add(measurement.key);
       else state.selected.delete(measurement.key);
       paintBlocks();
-    }, 'entry-choice');
+    }, 'entry-choice entry-picker__choice');
     box.label.dataset.key = measurement.key;
     nodes.push(box.label);
   }
@@ -406,20 +448,26 @@ function paintPicker() {
 }
 
 function buildCompositionCard() {
-  const card = el('section', 'card');
-  card.append(el('h2', null, 'Состав сессии'));
+  const card = el('section', 'card entry-step entry-composition');
+  card.append(buildStepHead(
+    2,
+    'Маршрут',
+    'Состав сессии',
+    'Выбери полный протокол или только нужные сегодня замеры.'
+  ));
 
   const modes = el('div', 'entry-modes');
-  const full = makeRadio('Полная сессия — все динамические замеры', state.mode === 'full', () => setMode('full'));
-  const custom = makeRadio('Отдельные замеры — любые из каталога', state.mode === 'custom', () => setMode('custom'));
+  const full = makeRadio('Полная сессия — все динамические замеры', state.mode === 'full', () => setMode('full'), 'entry-choice entry-mode-card');
+  const custom = makeRadio('Отдельные замеры — любые из каталога', state.mode === 'custom', () => setMode('custom'), 'entry-choice entry-mode-card');
   state.nodes.modeFull = full.input;
   state.nodes.modeCustom = custom.input;
   modes.append(full.label, custom.label);
   card.append(modes);
 
-  card.append(el('p', 'field__hint', 'Статику вроде роста и длины стопы тоже когда-то надо измерить — она в списке отдельных замеров.'));
+  card.append(el('p', 'field__hint entry-composition__hint', 'Статика вроде роста и длины стопы доступна в списке отдельных замеров.'));
 
   const picker = el('div', 'entry-picker');
+  picker.setAttribute('aria-label', 'Замеры для отдельной сессии');
   state.nodes.picker = picker;
   card.append(picker);
   paintPicker();
@@ -430,10 +478,14 @@ function paintBlocks() {
   if (state === null || !state.nodes.list) return;
   state.blocks = new Map();
   const list = measurementsFor(state.mode);
-  const nodes = list.map(buildBlock);
+  if (state.nodes.measurementMeta) state.nodes.measurementMeta.textContent = `Позиций: ${list.length}`;
+  const nodes = list.map((measurement, index) => buildBlock(measurement, index, list.length));
   if (nodes.length === 0) {
-    const empty = el('section', 'card');
-    empty.append(el('p', 'field__hint', 'Ни один замер не отмечен. Отметь в «Составе сессии», что будешь мерить.'));
+    const empty = el('section', 'card entry-empty');
+    empty.append(
+      el('strong', 'entry-empty__title', 'Замеры не выбраны'),
+      el('p', 'field__hint entry-empty__text', 'Отметь в «Составе сессии», что будешь мерить.')
+    );
     nodes.push(empty);
   }
   state.nodes.list.replaceChildren(...nodes);
@@ -441,17 +493,22 @@ function paintBlocks() {
 }
 
 function buildConditionsCard() {
-  const card = el('section', 'card');
-  card.append(el('h2', null, 'Условия сессии'));
+  const card = el('section', 'card entry-step');
+  card.append(buildStepHead(
+    4,
+    'Контекст',
+    'Условия сессии',
+    'Зафиксируй время и обстоятельства измерения.'
+  ));
 
   // Дата и время редактируемы: вчерашний замер должно быть можно внести.
   const when = el('div', 'entry-datetime');
   when.append(makeField('Дата', makeInput('date', state.date, (value) => {
     state.date = value;
-  })));
+  }), 'entry-field'));
   when.append(makeField('Время', makeInput('time', state.time, (value) => {
     state.time = value;
-  })));
+  }), 'entry-field'));
   card.append(when);
 
   // Оба флага включены по умолчанию: протокол §5.3 — утренний, натощак,
@@ -473,13 +530,19 @@ function buildConditionsCard() {
   const hours = makeNumericInput(state.conditions.hours, (value) => {
     state.conditions.hours = value;
   }, 'numeric');
-  card.append(makeField('Часов после тренировки (необязательно)', hours));
+  card.append(makeField('Часов после тренировки (необязательно)', hours, 'entry-field entry-hours'));
 
   return card;
 }
 
 function buildSaveCard() {
-  const card = el('section', 'card entry-save');
+  const card = el('section', 'card entry-step entry-save');
+  card.append(buildStepHead(
+    5,
+    'Финиш',
+    'Сохранение',
+    'Заполненные значения попадут в новую неизменяемую сессию.'
+  ));
   const button = makeButton(SAVE_TEXT, 'btn btn--primary', () => {
     void save();
   });
@@ -487,21 +550,38 @@ function buildSaveCard() {
   card.append(button);
 
   const messages = el('div', 'entry-messages');
+  messages.setAttribute('aria-live', 'polite');
   state.nodes.messages = messages;
   card.append(messages);
   return card;
 }
 
 function paint() {
+  const screen = el('div', 'entry-screen');
   const list = el('div', 'entry-blocks');
   state.nodes.list = list;
-  state.root.replaceChildren(
+
+  const measurements = el('section', 'entry-measurements');
+  const intro = el('div', 'card entry-step entry-measurements__intro');
+  const measurementHead = buildStepHead(
+    3,
+    'Протокол',
+    'Замеры',
+    'Иди сверху вниз: ориентир и поза всегда остаются перед полями.',
+    `Позиций: ${measurementsFor(state.mode).length}`
+  );
+  state.nodes.measurementMeta = measurementHead.children[2];
+  intro.append(measurementHead);
+  measurements.append(intro, list);
+
+  screen.append(
     buildRulesCard(),
     buildCompositionCard(),
-    list,
+    measurements,
     buildConditionsCard(),
     buildSaveCard()
   );
+  state.root.replaceChildren(screen);
   paintBlocks();
   updateSave();
 }

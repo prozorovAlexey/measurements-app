@@ -77,28 +77,51 @@ function makeButton(text, className, onClick) {
   return button;
 }
 
+function buildSettingsHeading(kicker, titleText, metaText = null, metaTone = null) {
+  const heading = el('header', 'settings-card__head');
+  const titles = el('div', 'settings-card__titles');
+  titles.append(
+    el('span', 'settings-card__kicker', kicker),
+    el('h2', 'settings-card__title', titleText)
+  );
+  heading.append(titles);
+  if (metaText !== null) {
+    const classes = ['settings-card__meta'];
+    if (metaTone) classes.push(`settings-card__meta--${metaTone}`);
+    heading.append(el('span', classes.join(' '), metaText));
+  }
+  return heading;
+}
+
 // ===== PAT, счётчик и экспорт ============================================
 
 function paintToken() {
   if (state === null || !state.nodes.token) return;
   const card = state.nodes.token;
-  const field = el('label', 'field');
-  field.append(el('span', null, 'Fine-grained PAT'));
+  const storedToken = getStoredToken();
+  const tokenValid = storedToken !== null && isFineGrainedToken(storedToken);
+  const heading = buildSettingsHeading(
+    'GitHub',
+    'Доступ к данным',
+    storedToken === null ? 'PAT не задан' : (tokenValid ? 'PAT сохранён' : 'Нужно заменить'),
+    storedToken === null ? 'muted' : (tokenValid ? 'good' : 'warning')
+  );
+  const field = el('label', 'field settings-field');
+  field.append(el('span', 'settings-field__label', 'Fine-grained PAT'));
 
-  const input = el('input');
+  const input = el('input', 'settings-token__input');
   input.type = 'password';
   input.name = 'github-token';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  const storedToken = getStoredToken();
   input.value = storedToken ?? '';
   field.append(input);
-  if (storedToken && !isFineGrainedToken(storedToken)) {
-    field.append(el('span', 'warn', 'Сохранённый токен не является fine-grained PAT. Замени его или очисти.'));
+  if (storedToken && !tokenValid) {
+    field.append(el('span', 'warn settings-field__warning', 'Сохранённый токен не является fine-grained PAT. Замени его или очисти.'));
   }
-  field.append(el('span', 'field__hint', 'Нужен fine-grained PAT со сроком не больше 1 года и правом Contents: read and write только для repo B. Токен хранится только в этом браузере; приложение не может проверить реальный срок и scope.'));
+  field.append(el('span', 'field__hint settings-field__hint', 'Нужен fine-grained PAT со сроком не больше 1 года и правом Contents: read and write только для repo B. Токен хранится только в этом браузере; приложение не может проверить реальный срок и scope.'));
 
-  const actions = el('div', 'settings-actions');
+  const actions = el('div', 'settings-actions settings-actions--token');
   actions.append(makeButton('Сохранить PAT', 'btn btn--primary', () => {
     if (!isFineGrainedToken(input.value)) {
       toast('Нужен fine-grained PAT с префиксом github_pat_.', 'error');
@@ -122,7 +145,7 @@ function paintToken() {
   clear.disabled = storedToken === null;
   actions.append(clear);
 
-  card.replaceChildren(el('h2', null, 'Доступ к данным'), field, actions);
+  card.replaceChildren(heading, field, actions);
 }
 
 // Блок одного счётчика: заголовок, крупное число, время последнего события.
@@ -130,7 +153,7 @@ function paintToken() {
 // блока в разметке (гейт §2 спеки завязан на T15-приёмку «старый счётчик
 // шпаргалки не потерян»).
 function metricBlock(modifier, heading, count, lastAt, emptyHint) {
-  const block = el('div', `settings-metric-block settings-metric-block--${modifier}`);
+  const block = el('article', `settings-metric-block settings-metric-block--${modifier}`);
   block.append(el('h3', null, heading));
   block.append(el('p', 'settings-metric', String(count)));
   block.append(el('p', 'field__hint', lastAt ? `Последнее: ${formatWhen(lastAt)}` : emptyHint));
@@ -141,15 +164,20 @@ function metricBlock(modifier, heading, count, lastAt, emptyHint) {
 // (этап 1) не удаляется и не мигрируется — это уже накопленное измерение,
 // переписать его новым счётчиком значило бы подделать наблюдение (§14 контракта).
 function buildUsage() {
-  const card = el('section', 'card settings-usage');
-  card.append(el('h2', null, 'Открытия (гейт §2)'));
+  const card = el('section', 'card settings-card settings-usage');
+  card.append(
+    buildSettingsHeading('На устройстве', 'Открытия', 'Локально', 'muted'),
+    el('p', 'settings-card__intro', 'Счётчики помогают понять, какие части трекера действительно используются.')
+  );
 
   const opensV2 = getOpens();
-  card.append(metricBlock('sizes', 'Размеры', opensV2.sizes.count, opensV2.sizes.lastAt, 'Ещё не открывались.'));
-  card.append(metricBlock('app', 'Запуски приложения', opensV2.app.count, opensV2.app.lastAt, 'Ещё не запускалось.'));
+  const grid = el('div', 'settings-usage__grid');
+  grid.append(metricBlock('sizes', 'Размеры', opensV2.sizes.count, opensV2.sizes.lastAt, 'Ещё не открывались.'));
+  grid.append(metricBlock('app', 'Запуски приложения', opensV2.app.count, opensV2.app.lastAt, 'Ещё не запускалось.'));
 
   const legacy = getCheatsheetOpens();
-  card.append(metricBlock('legacy', 'Шпаргалка (этап 1, заморожено)', legacy.count, legacy.lastAt, 'Шпаргалка не открывалась.'));
+  grid.append(metricBlock('legacy', 'Шпаргалка · этап 1', legacy.count, legacy.lastAt, 'Шпаргалка не открывалась.'));
+  card.append(grid);
 
   return card;
 }
@@ -298,9 +326,9 @@ function paintExport() {
   });
   button.disabled = state.exportBusy;
   card.replaceChildren(
-    el('h2', null, 'Экспорт'),
-    el('p', 'field__hint', 'Скачивает одним JSON-массивом серверные сессии и корректные сессии, которые ещё ждут в офлайн-очереди.'),
-    el('div', 'settings-actions')
+    buildSettingsHeading('Резервная копия', 'Экспорт данных', 'JSON', 'muted'),
+    el('p', 'settings-card__intro', 'Скачивает одним файлом серверные сессии и корректные сессии, которые ещё ждут в офлайн-очереди.'),
+    el('div', 'settings-actions settings-actions--single')
   );
   card.children[2].append(button);
 }
@@ -495,14 +523,20 @@ async function updateApp() {
 function paintUpdate() {
   if (state === null || !state.nodes.update) return;
   const card = state.nodes.update;
+  const supported = updateSupported();
   const button = makeButton(state.updateBusy ? 'Проверяю…' : 'Обновить приложение', 'btn', () => {
     void updateApp();
   });
-  button.disabled = state.updateBusy || !updateSupported();
+  button.disabled = state.updateBusy || !supported;
   card.replaceChildren(
-    el('h2', null, 'Приложение'),
-    el('p', 'field__hint', 'Проверяет новую оболочку и включает её по явной команде.'),
-    el('div', 'settings-actions')
+    buildSettingsHeading(
+      'Версия',
+      'Приложение',
+      state.updateBusy ? 'Проверка…' : (supported ? 'Готово' : 'Недоступно'),
+      state.updateBusy ? null : (supported ? 'good' : 'muted')
+    ),
+    el('p', 'settings-card__intro', 'Проверяет новую оболочку и включает её по явной команде.'),
+    el('div', 'settings-actions settings-actions--single')
   );
   card.children[2].append(button);
 }
@@ -510,21 +544,23 @@ function paintUpdate() {
 // ===== Карточка очереди ===================================================
 
 function buildJob(job) {
-  const item = el('li', 'queue-job');
+  const item = el('li', `queue-job queue-job--${job.status}`);
   item.dataset.job = String(job.id);
 
-  item.append(el('p', 'queue-job__path', job.path));
+  const heading = el('div', 'queue-job__head');
+  heading.append(
+    el('p', 'queue-job__path', job.path),
+    el('p', `queue-job__state queue-job__state--${job.status}`, stateLabel(job.status))
+  );
+  item.append(heading);
   item.append(el('p', 'queue-job__when', `Поставлено ${formatWhen(job.createdAt)}`));
-
-  const status = el('p', `queue-job__state queue-job__state--${job.status}`, stateLabel(job.status));
-  item.append(status);
 
   // Текст ошибки — как есть: он уже русский и конкретный (§4 контракта).
   if (typeof job.lastError === 'string' && job.lastError.trim() !== '') {
-    item.append(el('p', 'warn', job.lastError));
+    item.append(el('p', 'warn queue-job__error', job.lastError));
   }
 
-  const actions = el('div', 'queue-actions');
+  const actions = el('div', 'queue-actions queue-actions--job');
   if (state.confirmId === job.id) {
     actions.append(el('p', 'warn', 'Замеры из этой сессии пропадут навсегда.'));
     actions.append(makeButton('Удалить навсегда', 'btn btn--danger', () => {
@@ -548,23 +584,36 @@ function buildJob(job) {
 function paintQueue() {
   if (state === null || !state.nodes.queue) return;
   const card = state.nodes.queue;
-  const nodes = [el('h2', null, 'Очередь отправки')];
+  const metaText = state.busy
+    ? 'Отправка…'
+    : (state.jobs.length === 0 ? 'Всё отправлено' : `Заданий: ${state.jobs.length}`);
+  const metaTone = state.busy ? null : (state.jobs.length === 0 ? 'good' : 'pending');
+  const heading = buildSettingsHeading('Синхронизация', 'Очередь отправки', metaText, metaTone);
+  const meta = heading.children[1];
+  if (meta) meta.setAttribute('aria-live', 'polite');
+  const nodes = [heading];
 
-  nodes.push(el('p', 'field__hint', 'Сессия сначала попадает сюда и только потом уходит в репозиторий с данными. Пока задание в очереди, замеры не потеряны.'));
+  nodes.push(el('p', 'settings-card__intro', 'Сессия сначала попадает сюда и только потом уходит в репозиторий с данными. Пока задание в очереди, замеры не потеряны.'));
 
   if (!isPersistent()) {
-    nodes.push(el('p', 'warn', 'Браузер не даёт сохранить очередь на диск: незакрытая вкладка — единственное, что её держит.'));
+    nodes.push(el('p', 'warn settings-notice', 'Браузер не даёт сохранить очередь на диск: незакрытая вкладка — единственное, что её держит.'));
   }
 
   if (state.jobs.length === 0) {
-    nodes.push(el('p', 'queue-empty', 'Очередь пуста — всё отправлено.'));
+    const empty = el('div', 'queue-empty');
+    empty.append(
+      el('strong', 'queue-empty__title', 'Очередь пуста'),
+      el('span', 'queue-empty__text', 'Все сессии отправлены.')
+    );
+    nodes.push(empty);
   } else {
     const list = el('ul', 'queue-list');
+    list.setAttribute('aria-label', 'Неотправленные сессии');
     for (const job of state.jobs) list.append(buildJob(job));
     nodes.push(list);
   }
 
-  const actions = el('div', 'queue-actions');
+  const actions = el('div', 'queue-actions queue-actions--flush');
   const button = makeButton(state.busy ? FLUSHING_TEXT : FLUSH_TEXT, 'btn btn--primary', () => {
     void sendNow();
   });
@@ -646,21 +695,27 @@ export async function render(root, params) {
     nodes: {}
   };
 
-  const tokenCard = el('section', 'card settings-token');
+  const tokenCard = el('section', 'card settings-card settings-token');
   state.nodes.token = tokenCard;
 
   const usage = buildUsage();
 
-  const exportCard = el('section', 'card settings-export');
+  const exportCard = el('section', 'card settings-card settings-export');
   state.nodes.export = exportCard;
 
-  const queue = el('section', 'card settings-queue');
+  const queue = el('section', 'card settings-card settings-queue');
   state.nodes.queue = queue;
 
-  const update = el('section', 'card settings-update');
+  const update = el('section', 'card settings-card settings-update');
   state.nodes.update = update;
 
-  root.replaceChildren(tokenCard, usage, exportCard, queue, update);
+  const tools = el('section', 'settings-tools');
+  tools.setAttribute('aria-label', 'Обслуживание приложения');
+  tools.append(exportCard, update);
+
+  const screen = el('div', 'settings-screen');
+  screen.append(tokenCard, usage, tools, queue);
+  root.replaceChildren(screen);
   paintToken();
   paintExport();
   paintQueue();

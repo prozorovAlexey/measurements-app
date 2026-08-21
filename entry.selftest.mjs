@@ -500,6 +500,12 @@ await step('по умолчанию — полная сессия: все дин
   assert.equal(full.checked, true, 'полная сессия не выбрана по умолчанию');
   assert.equal(custom.checked, false);
   assert.equal(pickerLabels(root).length, 0, 'в полной сессии список замеров не нужен');
+
+  assert.deepEqual(
+    byClass(root, 'entry-step__marker').map((node) => node.textContent),
+    ['01', '02', '03', '04', '05'],
+    'реальный порядок протокола не отражён в интерфейсе'
+  );
 });
 
 await step('§7.2: полей повторов ровно reps из каталога, поля числовые', async () => {
@@ -559,15 +565,21 @@ await step('§7.2: медиана пересчитывается вживую, �
   const block = blockOf(root, 'waist_who');
   assert.equal(medianOf(block).textContent, 'Медиана: —', 'пустой блок');
   assert.ok(medianOf(block).classList.contains('entry-median--empty'));
+  assert.equal(byClass(block, 'entry-block__status')[0].textContent, 'Не измерено');
+  assert.equal(block.classList.contains('entry-block--ready'), false);
 
   const inputs = repsOf(block);
   typeInto(inputs[0], '86.5');
   assert.equal(medianOf(block).textContent, 'Медиана: 86,5 см', 'один повтор — он же медиана');
+  assert.equal(byClass(block, 'entry-block__status')[0].textContent, '1 из 3');
+  assert.equal(block.classList.contains('entry-block--ready'), false, 'неполный протокол помечен готовым');
   typeInto(inputs[1], '87.0');
   assert.equal(medianOf(block).textContent, 'Медиана: 86,8 см', 'двух повторов — среднее');
   typeInto(inputs[2], '86,8');
   assert.equal(medianOf(block).textContent, 'Медиана: 86,8 см');
   assert.equal(medianOf(block).classList.contains('entry-median--empty'), false);
+  assert.equal(byClass(block, 'entry-block__status')[0].textContent, 'Готово');
+  assert.equal(block.classList.contains('entry-block--ready'), true);
 
   // Запятая с телефонной клавиатуры — основной случай ввода.
   fillReps(block, ['86,5', '87,0', '86,9']);
@@ -580,6 +592,8 @@ await step('§7.2: медиана пересчитывается вживую, �
   // Значение стёрли — медиана возвращается к прочерку, а не к нулю.
   fillReps(block, ['', '', '']);
   assert.equal(medianOf(block).textContent, 'Медиана: —');
+  assert.equal(byClass(block, 'entry-block__status')[0].textContent, 'Не измерено');
+  assert.equal(block.classList.contains('entry-block--ready'), false);
 });
 
 // --- Предупреждения -------------------------------------------------------
