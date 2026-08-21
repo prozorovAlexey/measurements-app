@@ -1,64 +1,149 @@
-/* Единственный стиль приложения. Mobile-first, светлая тема — базовая. */
+/* Единственный стиль приложения. Mobile-first, светлая тема — базовая.
+   Тёмная тема — по умолчанию системная (@media prefers-color-scheme),
+   но её можно переопределить вручную: [data-theme="dark"] на <html> всегда
+   побеждает медиа-запрос, [data-theme="light"] гасит системную тёмную.
+   Переключатель — app.js, персистентность — store.js (T17). */
 
 :root {
   color-scheme: light dark;
 
-  --bg: #f4f5f7;
+  --bg: #f8f9fa;
   --surface: #ffffff;
-  --border: #d7dbe0;
-  --fg: #14171a;
-  --muted: #626b78;
-  --accent: #1f6feb;
-  --warn: #9a5b00;
-  --danger: #c02626;
-  --ok: #14713f;
+  --surface-2: #f8f9fa;
+  --border: #e4e7ea;
+  --border-soft: #f0f2f4;
+  --text: #4a5568;
+  --text-strong: #2d3748;
+  --text-mid: #73818f;
+  --text-muted: #99a2ac;
+  --text-faint: #b0bec5;
+  --text-label: #9dadb7;
+  --line-muted: #cfd8dc;
+  --chip-track: #eceff1;
+  --scrollbar-thumb: #dfe3e7;
+
+  --ac: #1073af;
+  --acs: rgba(16, 115, 175, 0.12);
+  --acl: rgba(16, 115, 175, 0.06);
+
+  --warn-fg: #8a6d1f;
+  --warn-bg: rgba(216, 183, 82, 0.18);
+  --tone-bad: #f86c6b;
+  --tone-good: #4cad2f;
   /* Значение из очереди не ошибочное и не устаревшее — оно ещё не доехало
      (T14, §10 контракта). Единственный тон, который значит «ожидает
-     отправки»; --ok/--stale/--error сюда не годятся. */
+     отправки»; --tone-good/--warn-fg/--tone-bad сюда не годятся. */
   --pending: #6d5bd0;
-  --accent-strong: #1073af;
-  --fig-fill: #dceff7;
-  --fig-stroke: #176e9f;
-  --fig-guide: #8394a2;
+
+  --toast-bg: #2d3748;
+  --toast-fg: #ffffff;
+
+  /* Силуэт (figure.js рисует геометрию, здесь только палитра). */
+  --body-fill: #e8f1f7;
+  --body-stroke: #c6d5e0;
+  --ground-fill: rgba(45, 55, 72, 0.055);
+
+  /* KPI-карточки (T20 заменит фоновую тонировку точкой-индикатором —
+     токены пока остаются для текущей вёрстки KPI). */
   --kpi-weight: #e5f1fb;
   --kpi-bmi: #eaf4e4;
-  --kpi-whr: #fff0dc;
+  --kpi-whr: #fff3e0;
 
   /* Значение шпаргалки читается с вытянутой руки (§7.1). */
   --fs-value: clamp(2rem, 11vw, 3.25rem);
   --fs-body: 1rem;
   --fs-small: 0.8125rem;
+  --fs-kpi: clamp(1.45rem, 7vw, 2.25rem);
 
   --gap: 0.75rem;
   --radius: 0.75rem;
-  --r-card: 0.375rem;
-  --sh-card: 0 0.35rem 1.25rem rgb(20 55 75 / 10%);
-  --fs-kpi: clamp(1.45rem, 7vw, 2.25rem);
+  --r-card: 9px;
+  --sh-card: 0 2px 6px rgb(0 0 0 / 5%);
 
   /* Минимальная тач-цель — 44px. */
   --tap: 2.75rem;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --surface: #171a20;
-    --border: #2a2f39;
-    --fg: #e9ecf1;
-    --muted: #9aa3b2;
-    --accent: #6ea8ff;
-    --warn: #e2a44f;
-    --danger: #ff7070;
-    --ok: #52c98a;
+  :root:not([data-theme='light']) {
+    --bg: #15181b;
+    --surface: #1c2126;
+    --surface-2: #242a30;
+    --border: #2a3138;
+    --border-soft: #262c32;
+    --text: #c7d0d6;
+    --text-strong: #eef2f4;
+    --text-mid: #9aa5ad;
+    --text-muted: #7c8791;
+    --text-faint: #5b656e;
+    --text-label: #6b7580;
+    --line-muted: #3a434b;
+    --chip-track: #20262c;
+    --scrollbar-thumb: #333b42;
+
+    --ac: #71c8f2;
+    --acs: rgba(113, 200, 242, 0.16);
+    --acl: rgba(113, 200, 242, 0.08);
+
+    --warn-fg: #e8c876;
+    --warn-bg: rgba(216, 183, 82, 0.16);
+    --tone-bad: #ff7070;
+    --tone-good: #52c98a;
     --pending: #a79bf0;
-    --accent-strong: #71c8f2;
-    --fig-fill: #203b49;
-    --fig-stroke: #79c6e8;
-    --fig-guide: #8197a5;
+
+    --toast-bg: #eef2f4;
+    --toast-fg: #1c2126;
+
+    --body-fill: #232a30;
+    --body-stroke: #3c4750;
+    --ground-fill: rgb(0 0 0 / 35%);
+
     --kpi-weight: #1c3447;
     --kpi-bmi: #253827;
     --kpi-whr: #403326;
+
+    --sh-card: 0 2px 10px rgb(0 0 0 / 50%);
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #15181b;
+  --surface: #1c2126;
+  --surface-2: #242a30;
+  --border: #2a3138;
+  --border-soft: #262c32;
+  --text: #c7d0d6;
+  --text-strong: #eef2f4;
+  --text-mid: #9aa5ad;
+  --text-muted: #7c8791;
+  --text-faint: #5b656e;
+  --text-label: #6b7580;
+  --line-muted: #3a434b;
+  --chip-track: #20262c;
+  --scrollbar-thumb: #333b42;
+
+  --ac: #71c8f2;
+  --acs: rgba(113, 200, 242, 0.16);
+  --acl: rgba(113, 200, 242, 0.08);
+
+  --warn-fg: #e8c876;
+  --warn-bg: rgba(216, 183, 82, 0.16);
+  --tone-bad: #ff7070;
+  --tone-good: #52c98a;
+  --pending: #a79bf0;
+
+  --toast-bg: #eef2f4;
+  --toast-fg: #1c2126;
+
+  --body-fill: #232a30;
+  --body-stroke: #3c4750;
+  --ground-fill: rgb(0 0 0 / 35%);
+
+  --kpi-weight: #1c3447;
+  --kpi-bmi: #253827;
+  --kpi-whr: #403326;
+
+  --sh-card: 0 2px 10px rgb(0 0 0 / 50%);
 }
 
 *,
@@ -77,8 +162,8 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: var(--fs-body);
   line-height: 1.45;
 }
@@ -95,8 +180,18 @@ body {
 }
 
 :where(a, button, input, select, textarea, [role='button']):focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ac);
   outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 8px;
 }
 
 /* Шапка */
@@ -123,6 +218,48 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Переключатель темы (T17) — свитч в шапке, виден на любом экране.
+   Разметка — index.html, поведение — app.js, персистентность — store.js. */
+.theme-toggle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--chip-track);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.theme-toggle[aria-checked='true'] {
+  background: var(--ac);
+  border-color: var(--ac);
+}
+
+.theme-toggle__knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+  transition: left 0.18s ease;
+}
+
+.theme-toggle[aria-checked='true'] .theme-toggle__knob {
+  left: 23px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle__knob {
+    transition: none;
+  }
 }
 
 /* Экран */
@@ -171,12 +308,12 @@ body {
 }
 
 .label {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
 .date {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -184,7 +321,7 @@ body {
 
 /* Данные старше frequency_days x 2 — приглушённо (§7.1). */
 .date--stale {
-  color: var(--warn);
+  color: var(--warn-fg);
   opacity: 0.85;
 }
 
@@ -203,7 +340,7 @@ body {
   width: 100%;
   padding: 0.5rem 0.625rem;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) / 1.5);
   font: inherit;
@@ -211,7 +348,7 @@ body {
 }
 
 .field__hint {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -224,7 +361,7 @@ body {
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   background: var(--surface);
-  color: var(--fg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) / 1.5);
   font: inherit;
@@ -239,22 +376,22 @@ body {
 }
 
 .btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--ac);
+  border-color: var(--ac);
   color: #ffffff;
 }
 
 .btn--danger {
   background: transparent;
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--tone-bad);
+  color: var(--tone-bad);
 }
 
 .warn {
   padding: calc(var(--gap) / 1.5) var(--gap);
-  border: 1px solid var(--warn);
+  border: 1px solid var(--warn-fg);
   border-radius: calc(var(--radius) / 1.5);
-  color: var(--warn);
+  color: var(--warn-fg);
   font-size: var(--fs-small);
 }
 
@@ -265,7 +402,7 @@ body {
   padding: 0.15rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   white-space: nowrap;
   overflow: hidden;
@@ -274,18 +411,18 @@ body {
 }
 
 .status--ok {
-  color: var(--ok);
-  border-color: var(--ok);
+  color: var(--tone-good);
+  border-color: var(--tone-good);
 }
 
 .status--stale {
-  color: var(--warn);
-  border-color: var(--warn);
+  color: var(--warn-fg);
+  border-color: var(--warn-fg);
 }
 
 .status--error {
-  color: var(--danger);
-  border-color: var(--danger);
+  color: var(--tone-bad);
+  border-color: var(--tone-bad);
 }
 
 /* Таббар */
@@ -309,13 +446,13 @@ body {
   justify-content: center;
   gap: 0.125rem;
   padding: 0.375rem 0.25rem;
-  color: var(--muted);
+  color: var(--text-muted);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 .tabbar__item--active {
-  color: var(--accent);
+  color: var(--ac);
 }
 
 .tabbar__icon {
@@ -333,7 +470,9 @@ body {
   line-height: 1.1;
 }
 
-/* Тосты — короткие уведомления над таббаром */
+/* Тосты — короткие уведомления над таббаром. Тёмная плашка всегда (стиль
+   макета), тон различает не фон целиком, а цветная полоса слева — так
+   ok/stale/error остаются различимы, а не сливаются в один серый тост. */
 
 .toast-host {
   position: fixed;
@@ -351,25 +490,25 @@ body {
 
 .toast {
   max-width: 32rem;
-  padding: 0.5rem 0.875rem;
-  background: var(--surface);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  padding: 0.625rem 1rem;
+  background: var(--toast-bg);
+  color: var(--toast-fg);
+  border-left: 3px solid transparent;
+  border-radius: var(--r-card);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
   font-size: var(--fs-small);
 }
 
 .toast--ok {
-  border-color: var(--ok);
+  border-left-color: var(--tone-good);
 }
 
 .toast--stale {
-  border-color: var(--warn);
+  border-left-color: var(--warn-fg);
 }
 
 .toast--error {
-  border-color: var(--danger);
+  border-left-color: var(--tone-bad);
 }
 
 /* Шпаргалка (T4, §7.1)
@@ -377,7 +516,7 @@ body {
    Отличается только цвет даты (.date--stale) — размер и место те же. */
 
 .cheat-section h2 {
-  color: var(--muted);
+  color: var(--text-label);
   font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -395,12 +534,12 @@ body {
 }
 
 .cheat-row:active {
-  background: var(--bg);
+  background: var(--surface-2);
 }
 
 @media (hover: hover) {
   .cheat-row:hover {
-    background: var(--bg);
+    background: var(--surface-2);
   }
 }
 
@@ -414,7 +553,7 @@ body {
 
 /* Подпись замера читается как основной текст: по ней ищут строку глазами. */
 .cheat-row__name {
-  color: var(--fg);
+  color: var(--text-strong);
   font-size: var(--fs-body);
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -428,14 +567,14 @@ body {
 }
 
 .cheat-row__unit {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
 /* Значения ещё нет — прочерк того же размера: пустое место напоминает,
    что замер стоит сделать. */
 .value--empty {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .cheat-notice__link {
@@ -471,7 +610,7 @@ body {
 .entry-rules {
   margin: 0;
   padding-left: 1.15rem;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -499,7 +638,7 @@ body {
   width: 1.25rem;
   height: 1.25rem;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--ac);
 }
 
 .entry-picker {
@@ -519,14 +658,14 @@ body {
 
 .entry-block__unit {
   margin-left: 0.35rem;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-weight: 400;
 }
 
 .entry-protocol {
   margin: 0 0 0.2rem;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -553,7 +692,7 @@ body {
 /* Медианы ещё нет — та же строка приглушённым цветом, чтобы место под неё
    не прыгало при вводе. */
 .entry-median--empty {
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -571,9 +710,9 @@ body {
    пока галочка не стоит, сохранение заблокировано (§7.2). */
 .entry-confirm {
   padding: 0 calc(var(--gap) / 1.5);
-  border: 1px solid var(--warn);
+  border: 1px solid var(--warn-fg);
   border-radius: calc(var(--radius) / 1.5);
-  color: var(--warn);
+  color: var(--warn-fg);
 }
 
 .entry-note {
@@ -626,7 +765,7 @@ body {
 
 .queue-job {
   padding: calc(var(--gap) / 1.5);
-  background: var(--bg);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) / 1.5);
 }
@@ -643,7 +782,7 @@ body {
 }
 
 .queue-job__when {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -652,20 +791,20 @@ body {
 }
 
 .queue-job__state--pending {
-  color: var(--warn);
+  color: var(--warn-fg);
 }
 
 .queue-job__state--sending {
-  color: var(--accent);
+  color: var(--ac);
 }
 
 .queue-job__state--failed {
-  color: var(--danger);
+  color: var(--tone-bad);
 }
 
 .queue-empty {
   margin: var(--gap) 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .queue-actions {
@@ -692,7 +831,7 @@ body {
 
 .sparkline__line {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--ac);
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -701,7 +840,7 @@ body {
 
 /* Прошлая методика не соединяется с текущей и отличается пунктиром. */
 .sparkline__line--previous {
-  stroke: var(--muted);
+  stroke: var(--text-muted);
   stroke-dasharray: 5 4;
 }
 
@@ -712,7 +851,7 @@ body {
 
 .history-empty {
   margin: var(--gap) 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .history-table-wrap {
@@ -732,13 +871,13 @@ body {
 .history-table th,
 .history-table td {
   padding: calc(var(--gap) / 1.5) calc(var(--gap) / 2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   text-align: left;
   vertical-align: top;
 }
 
 .history-table th {
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -757,11 +896,11 @@ body {
 .history-table__note {
   display: block;
   margin-top: 0.15rem;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .history-protocol-break td {
-  border-top: 2px dashed var(--muted);
+  border-top: 2px dashed var(--text-faint);
 }
 
 /* Настройки T8 (§7.4) */
@@ -775,7 +914,7 @@ body {
 
 .settings-metric {
   margin: 0;
-  color: var(--accent);
+  color: var(--ac);
   font-size: var(--fs-value);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -791,7 +930,7 @@ body {
 .settings-metric-block h3 {
   margin: 0 0 0.15rem;
   font-size: var(--fs-small);
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 400;
 }
 
@@ -807,7 +946,7 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0.2rem;
-  background: var(--surface);
+  background: var(--chip-track);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
 }
@@ -819,14 +958,15 @@ body {
   justify-content: center;
   padding: 0.4rem 0.65rem;
   border-radius: calc(var(--r-card) * 0.75);
-  color: var(--muted);
+  color: var(--text-mid);
   font-weight: 600;
   text-decoration: none;
 }
 
 .subtabs__item--active {
-  background: var(--accent-strong);
-  color: var(--surface);
+  background: var(--surface);
+  color: var(--ac);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
 }
 
 .subtabs__item--disabled {
@@ -847,7 +987,7 @@ body {
   flex: 0 0 auto;
   padding: 0.35rem 0.8rem;
   background: var(--surface);
-  color: var(--muted);
+  color: var(--text-mid);
   border: 1px solid var(--border);
   border-radius: 999px;
   font: inherit;
@@ -857,9 +997,10 @@ body {
 }
 
 .chip--active {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-  color: var(--surface);
+  background: var(--acs);
+  border-color: transparent;
+  color: var(--ac);
+  font-weight: 600;
 }
 
 /* T14: дата появилась только из очереди, index.json её ещё не видел. */
@@ -887,7 +1028,7 @@ body {
   padding: var(--gap);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-card);
+  border-radius: var(--radius);
   box-shadow: var(--sh-card);
 }
 
@@ -901,7 +1042,7 @@ body {
 }
 
 .fig-profile__label {
-  color: var(--muted);
+  color: var(--text-label);
   font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -912,7 +1053,7 @@ body {
   min-height: var(--tap);
   padding: 0.35rem 0.6rem;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
   font: inherit;
@@ -926,16 +1067,15 @@ body {
 }
 
 .fig-body {
-  fill: var(--fig-fill);
-  stroke: var(--fig-stroke);
+  fill: var(--body-fill);
+  stroke: var(--body-stroke);
   stroke-width: 1.6;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .fig-ground {
-  fill: var(--fig-fill);
-  opacity: 0.42;
+  fill: var(--ground-fill);
 }
 
 .fig-card--empty .fig-body,
@@ -944,7 +1084,7 @@ body {
 }
 
 .fig-guide {
-  color: var(--fig-guide);
+  color: var(--line-muted);
   font-size: 8.5px;
   pointer-events: none;
   transition: color 160ms ease;
@@ -963,7 +1103,7 @@ body {
 /* Мягкая скруглённая подсветка вокруг подписи — заменяет системную рамку
    фокуса (.fig-guide:focus-visible ниже) и служит откликом на наведение. */
 .fig-guide__highlight {
-  fill: var(--accent);
+  fill: var(--ac);
   opacity: 0;
   pointer-events: none;
   transform-box: fill-box;
@@ -984,7 +1124,7 @@ body {
 }
 
 .fig-guide--active {
-  color: var(--accent-strong);
+  color: var(--ac);
 }
 
 .fig-guide--active line {
@@ -994,7 +1134,7 @@ body {
 /* Дефолтная геометрия остаётся только каркасом: прочерк и волосяная линия
    не дают принять подставленную ширину за реальный замер. */
 .fig-guide--missing {
-  color: var(--fig-guide);
+  color: var(--line-muted);
   opacity: 0.62;
 }
 
@@ -1018,7 +1158,7 @@ body {
    та же подсветка, что и при наведении. */
 .fig-guide:focus-visible {
   outline: none;
-  color: var(--accent-strong);
+  color: var(--ac);
 }
 
 .fig-guide:focus-visible .fig-guide__highlight {
@@ -1028,7 +1168,7 @@ body {
 
 @media (hover: hover) {
   .fig-guide:hover {
-    color: var(--accent-strong);
+    color: var(--ac);
   }
 
   .fig-guide:hover .fig-guide__highlight {
@@ -1062,7 +1202,7 @@ body {
   gap: 0.15rem;
   padding: calc(var(--gap) / 1.4);
   border: 1px solid var(--border);
-  border-radius: var(--r-card);
+  border-radius: var(--radius);
   box-shadow: var(--sh-card);
 }
 
@@ -1080,7 +1220,7 @@ body {
 
 .kpi__label,
 .kpi__sub {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -1093,7 +1233,7 @@ body {
 }
 
 .kpi__value--missing {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .kpi--interactive {
@@ -1108,7 +1248,7 @@ body {
   position: absolute;
   top: 50%;
   right: calc(var(--gap) / 2);
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 1.4rem;
   line-height: 1;
   transform: translateY(-50%);
@@ -1120,7 +1260,7 @@ body {
 
 @media (hover: hover) {
   .kpi--interactive:hover {
-    border-color: var(--accent-strong);
+    border-color: var(--ac);
   }
 }
 
@@ -1133,7 +1273,7 @@ body {
 }
 
 .metric-detail {
-  --metric-detail-accent: var(--accent-strong);
+  --metric-detail-accent: var(--ac);
   width: 100%;
   max-width: 36rem;
   max-height: 92vh;
@@ -1151,11 +1291,11 @@ body {
 }
 
 .metric-detail--bmi {
-  --metric-detail-accent: var(--ok);
+  --metric-detail-accent: var(--tone-good);
 }
 
 .metric-detail--whr {
-  --metric-detail-accent: var(--warn);
+  --metric-detail-accent: var(--warn-fg);
 }
 
 .metric-detail__head,
@@ -1193,8 +1333,8 @@ body {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 50%;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--surface-2);
+  color: var(--text);
   font-size: 1.55rem;
   line-height: 1;
 }
@@ -1211,23 +1351,23 @@ body {
 }
 
 .metric-detail__change {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-detail__change--up {
-  color: var(--danger);
+  color: var(--tone-bad);
 }
 
 .metric-detail__change--down {
-  color: var(--ok);
+  color: var(--tone-good);
 }
 
 .metric-detail__chart {
   padding: var(--gap);
   overflow: hidden;
-  background-color: var(--bg);
+  background-color: var(--surface-2);
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--border) 52%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--border) 52%, transparent) 1px, transparent 1px);
@@ -1248,7 +1388,7 @@ body {
 .metric-detail__axis {
   justify-content: space-between;
   gap: var(--gap);
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
 }
@@ -1279,7 +1419,7 @@ body {
 
 .metric-detail__note,
 .metric-detail__empty {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -1298,7 +1438,7 @@ body {
   justify-content: space-between;
   gap: 0.2rem var(--gap);
   padding: calc(var(--gap) / 1.5) var(--gap);
-  background: var(--bg);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
 }
@@ -1313,7 +1453,7 @@ body {
 }
 
 .metric-range__value {
-  color: var(--muted);
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1349,7 +1489,7 @@ body {
 
 .sizecard h2 {
   margin: 0 0 0.2rem;
-  color: var(--muted);
+  color: var(--text-label);
   font-size: var(--fs-small);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1371,13 +1511,13 @@ body {
 
 .sizecard__cm {
   margin: 0.3rem 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
 .sizecard__missing {
   margin: 0.3rem 0 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -1387,7 +1527,7 @@ body {
 }
 
 .mgroup h2 {
-  color: var(--muted);
+  color: var(--text-label);
   font-size: var(--fs-small);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1404,7 +1544,7 @@ body {
 }
 
 .mrow + .mrow {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
 }
 
 .mrow__heading {
@@ -1433,7 +1573,7 @@ body {
 
 .mrow__amount--missing,
 .mrow__when {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .mrow__when,
@@ -1445,21 +1585,21 @@ body {
 /* Просрочка касается только подписи даты. Число остаётся того же размера
    и контраста, поэтому старое значение не исчезает визуально. */
 .mrow__when--stale {
-  color: var(--warn);
+  color: var(--warn-fg);
 }
 
 .delta--up {
-  color: var(--ok);
+  color: var(--tone-good);
 }
 
 .delta--down {
-  color: var(--danger);
+  color: var(--tone-bad);
 }
 
 /* Включая мёртвую зону: asof.delta() возвращает flat, CSS не добавляет
    ей семантический зелёный или красный тон. */
 .delta--flat {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* T14: значение из очереди — «ожидает отправки», а не измеренное и не
@@ -1586,13 +1726,14 @@ body {
 .sheet__title {
   font-size: 1.0625rem;
   font-weight: 700;
+  color: var(--text-strong);
 }
 
 .sheet__date,
 .sheet__hint,
 .sheet__protocol {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
 }
 
@@ -1608,8 +1749,8 @@ body {
   height: var(--tap);
   border: 1px solid var(--border);
   border-radius: var(--r-card);
-  background: var(--bg);
-  color: var(--accent-strong);
+  background: var(--surface);
+  color: var(--ac);
   font-size: 1.375rem;
   line-height: 1;
 }
@@ -1624,7 +1765,7 @@ body {
   width: 100%;
   border: none;
   background: transparent;
-  color: var(--fg);
+  color: var(--text-strong);
   font-size: 2.25rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -1633,7 +1774,7 @@ body {
 
 .sheet__unit {
   display: block;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1642,13 +1783,13 @@ body {
 
 .sheet__slider {
   width: 100%;
-  accent-color: var(--accent-strong);
+  accent-color: var(--ac);
 }
 
 .sheet__range {
   display: flex;
   justify-content: space-between;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
@@ -1664,7 +1805,7 @@ body {
 
 .sheet__error {
   margin: 0;
-  color: var(--danger);
+  color: var(--tone-bad);
   font-size: var(--fs-small);
 }
 
@@ -1719,7 +1860,7 @@ body {
 .cmp-table th,
 .cmp-table td {
   padding: calc(var(--gap) / 1.5) calc(var(--gap) / 2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   text-align: left;
 }
 
@@ -1729,7 +1870,7 @@ body {
 }
 
 .cmp-table th {
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
 }

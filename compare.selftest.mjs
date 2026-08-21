@@ -343,11 +343,15 @@ await step('сторож §0: ни в index.html, ни в style.css нет вн�
 await step('сторож: тёмная тема переопределяет те же токены, что заданы в :root', () => {
   const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
   const rootBlock = /:root\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-  const darkBlock = /@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\n  \}/.exec(css)?.[1] ?? '';
+  // T17: тёмная тема больше не сидит в голом `:root` внутри медиа-запроса —
+  // ручной свитч (app.js) переопределяет её через [data-theme], поэтому
+  // системный блок теперь `:root:not([data-theme='light'])`. Токены и их
+  // набор проверяем по смыслу как раньше, только другой якорь селектора.
+  const darkBlock = /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme='light'\]\)\s*\{([\s\S]*?)\n  \}/.exec(css)?.[1] ?? '';
   assert.ok(rootBlock && darkBlock, 'не найден :root или тёмный блок');
 
   const tokenNames = (block) => Array.from(block.matchAll(/(--[a-z0-9-]+):/g)).map((m) => m[1]);
-  const figKpiTokens = tokenNames(rootBlock).filter((name) => name.startsWith('--fig-') || name.startsWith('--kpi-') || name === '--accent-strong');
+  const figKpiTokens = tokenNames(rootBlock).filter((name) => name.startsWith('--body-') || name.startsWith('--kpi-') || name.startsWith('--ac'));
   const darkNames = new Set(tokenNames(darkBlock));
 
   const missing = figKpiTokens.filter((name) => !darkNames.has(name));

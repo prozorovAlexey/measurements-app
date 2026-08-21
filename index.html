@@ -10,6 +10,16 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./style.css">
+  <script>
+    // Бутстрап темы до первой отрисовки (T17): app.js — модуль, он
+    // выполняется после разбора документа и дал бы вспышку системной темы
+    // при явном ручном выборе. Дублирует чтение bm.theme из store.js
+    // намеренно — синхронный классический скрипт, а не модуль, ради тайминга.
+    try {
+      var t = localStorage.getItem('bm.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
@@ -17,6 +27,9 @@
     <header class="appbar">
       <h1 class="appbar__title" id="screen-title">Замеры</h1>
       <span class="status" id="header-status" role="status" aria-live="polite" hidden></span>
+      <button type="button" class="theme-toggle" id="theme-toggle" role="switch" aria-checked="false" aria-label="Тёмная тема">
+        <span class="theme-toggle__knob"></span>
+      </button>
     </header>
 
     <main id="app" class="screen"></main>

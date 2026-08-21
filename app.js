@@ -1,7 +1,7 @@
 // Bootstrap + hash-роутер + монтирование экранов (§2 контракта).
 // Экраны грузятся динамическим import() — каркас не тянет их код заранее.
 
-import { bumpOpens } from './store.js';
+import { bumpOpens, getThemeOverride, setThemeOverride } from './store.js';
 import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
@@ -25,6 +25,7 @@ const shellEl = document.getElementById('app-shell');
 const titleEl = document.getElementById('screen-title');
 const statusEl = document.getElementById('header-status');
 const toastHost = document.getElementById('toast-host');
+const themeToggleEl = document.getElementById('theme-toggle');
 const tabs = Array.from(document.querySelectorAll('.tabbar__item'));
 
 let currentModule = null;
@@ -79,6 +80,55 @@ function markLayout(name) {
   if (!shellEl) return;
   shellEl.classList.toggle('app-shell--figure', name === 'figure' || name === 'compare');
 }
+
+// --- Тема (T17) ------------------------------------------------------------
+// index.html ставит [data-theme] инлайновым скриптом до первой отрисовки
+// (тайминг — комментарий там же); здесь тот же атрибут применяется на
+// последующих переключениях и синхронизируется визуальный статус свитча.
+
+const darkMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function effectiveTheme() {
+  const override = getThemeOverride();
+  if (override) return override;
+  return darkMedia && darkMedia.matches ? 'dark' : 'light';
+}
+
+function paintThemeToggle() {
+  if (!themeToggleEl) return;
+  const dark = effectiveTheme() === 'dark';
+  themeToggleEl.setAttribute('aria-checked', String(dark));
+}
+
+function applyTheme() {
+  const override = getThemeOverride();
+  // document.documentElement отсутствует в мини-DOM самопроверок экранов
+  // (они стабят только getElementById/querySelectorAll, см. compare.selftest.mjs) —
+  // приложению в браузере он всегда есть, поэтому проверка только для тестов.
+  if (document.documentElement) {
+    if (override) document.documentElement.dataset.theme = override;
+    else delete document.documentElement.dataset.theme;
+  }
+  paintThemeToggle();
+}
+
+if (themeToggleEl) {
+  themeToggleEl.addEventListener('click', () => {
+    setThemeOverride(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    applyTheme();
+  });
+}
+
+// Без ручного override переключатель обязан следовать системной теме и в
+// реальном времени — иначе после «сна» вкладки его состояние разойдётся
+// с уже применённой через медиа-запрос палитрой.
+if (darkMedia) {
+  const onSystemChange = () => { if (!getThemeOverride()) paintThemeToggle(); };
+  if (typeof darkMedia.addEventListener === 'function') darkMedia.addEventListener('change', onSystemChange);
+  else if (typeof darkMedia.addListener === 'function') darkMedia.addListener(onSystemChange);
+}
+
+applyTheme();
 
 export function setHeaderStatus(text, tone) {
   if (!statusEl) return;

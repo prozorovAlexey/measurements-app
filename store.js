@@ -9,7 +9,8 @@ export const KEYS = {
   catalog: 'bm.catalog_cache', // { data, fetchedAt } то же, для catalog.json
   opens: 'bm.cheatsheet_opens', // { count, lastAt } — этап 1, после T15 не растёт
   opensV2: 'bm.opens', // T15 — { sizes: {count,lastAt}, app: {count,lastAt} }
-  profile: 'bm.profile' // { sex: 'male' | 'female' }
+  profile: 'bm.profile', // { sex: 'male' | 'female' }
+  theme: 'bm.theme' // 'light' | 'dark' — T17. Отсутствие ключа = системная тема.
 };
 
 const DEFAULT_REPO = Object.freeze({
@@ -227,4 +228,23 @@ export function setProfile(profile) {
   };
   writeJSON(KEYS.profile, next);
   return next;
+}
+
+// --- Ручное переопределение темы (T17) ------------------------------------
+// null — темы нет в хранилище, приложение следует системной
+// (@media prefers-color-scheme). Свитч в шапке пишет сюда явный выбор,
+// который в style.css побеждает через [data-theme] — см. store.js:5-13.
+
+export function getThemeOverride() {
+  const raw = readRaw(KEYS.theme);
+  return raw === 'light' || raw === 'dark' ? raw : null;
+}
+
+export function setThemeOverride(value) {
+  if (value !== 'light' && value !== 'dark') {
+    removeRaw(KEYS.theme);
+    return null;
+  }
+  writeRaw(KEYS.theme, value);
+  return value;
 }

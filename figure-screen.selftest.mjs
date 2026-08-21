@@ -556,8 +556,8 @@ await step('сторож: экран read-only и окрашивает Δ тол
 
   const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
   const flat = /\.delta--flat\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
-  assert.match(flat, /color:\s*var\(--muted\)/);
-  assert.doesNotMatch(flat, /--ok|--danger|--accent/);
+  assert.match(flat, /color:\s*var\(--text-muted\)/);
+  assert.doesNotMatch(flat, /--tone-good|--tone-bad|--ac\b/);
 });
 
 await step('сторож: шаблон не попал в отгружаемые файлы приложения', () => {
