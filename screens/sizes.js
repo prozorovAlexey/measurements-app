@@ -176,11 +176,19 @@ function buildSizeCard(card, slice, sex) {
   const { measurements, values } = valuesFor(card.scale, slice);
   const result = sizeFor(card.scale, values, { sex });
 
-  const wrap = el('article', 'sizecard card');
-  wrap.append(el('h2', null, card.label));
+  const wrap = el('article', result.missing.length > 0
+    ? 'sizecard sizecard--missing kpi'
+    : 'sizecard kpi');
+  const dot = el('span', 'kpi__dot');
+  dot.setAttribute('aria-hidden', 'true');
+  wrap.append(dot, el('h2', 'sizecard__label kpi__label', card.label));
 
   const primaryText = result.primary && result.letter ? `${result.primary} (${result.letter})` : result.primary;
-  if (primaryText) wrap.append(el('p', 'sizecard__primary', primaryText));
+  if (primaryText) {
+    const figures = el('div', 'sizecard__figures kpi__figures');
+    figures.append(el('strong', 'sizecard__primary kpi__value', primaryText));
+    wrap.append(figures);
+  }
   if (result.secondary) wrap.append(el('p', 'sizecard__secondary', result.secondary));
 
   const cmParts = measurements
@@ -188,19 +196,19 @@ function buildSizeCard(card, slice, sex) {
       ? `${measurement.label}: ${formatMeasurement(values[measurement.key], measurement.unit)}`
       : null))
     .filter(Boolean);
-  if (cmParts.length > 0) wrap.append(el('p', 'sizecard__cm', cmParts.join(' · ')));
+  if (cmParts.length > 0) wrap.append(el('p', 'sizecard__cm kpi__sub', cmParts.join(' · ')));
 
   if (result.missing.length > 0) {
     const names = result.missing.map((key) => getMeasurement(key)?.label ?? key).join(', ');
-    wrap.append(el('p', 'sizecard__missing', `Нужен замер: ${names}`));
+    wrap.append(el('p', 'sizecard__missing kpi__sub', `Нужен замер: ${names}`));
   }
 
-  wrap.append(el('p', 'field__hint', SIZE_DISCLAIMER));
+  wrap.append(el('p', 'sizecard__disclaimer field__hint', SIZE_DISCLAIMER));
   return wrap;
 }
 
 function buildSizeCards(slice, sex) {
-  const section = el('section', 'sizecards');
+  const section = el('section', 'sizecards kpi-grid');
   section.setAttribute('aria-label', 'Размеры по вещам');
   for (const card of CARDS) section.append(buildSizeCard(card, slice, sex));
   return section;
@@ -245,9 +253,17 @@ function buildOffRow(entry, point) {
 }
 
 function buildOffList(measurements, slice) {
-  const section = el('section', 'mgroup card');
-  section.append(el('h2', null, 'Остальные замеры'));
-  for (const entry of measurements) section.append(buildOffRow(entry, pointOf(slice, entry.key)));
+  const section = el('section', 'mgroup sizes-measurements card');
+  section.setAttribute('aria-labelledby', 'sizes-measurements-title');
+
+  const heading = el('header', 'sizes-measurements__head');
+  const titleNode = el('h2', 'sizes-measurements__title', 'Остальные замеры');
+  titleNode.id = 'sizes-measurements-title';
+  heading.append(titleNode, el('span', 'sizes-measurements__hint', 'Нажмите строку, чтобы внести'));
+
+  const list = el('div', 'sizes-measurements__list');
+  for (const entry of measurements) list.append(buildOffRow(entry, pointOf(slice, entry.key)));
+  section.append(heading, list);
   return section;
 }
 

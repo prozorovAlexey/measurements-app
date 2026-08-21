@@ -81,6 +81,15 @@ function formatDate(value) {
   return `${match[3]}.${match[2]}.${match[1]}`;
 }
 
+function countText(count, forms) {
+  const remainder = count % 100;
+  if (remainder >= 11 && remainder <= 14) return `${count} ${forms[2]}`;
+  const last = count % 10;
+  if (last === 1) return `${count} ${forms[0]}`;
+  if (last >= 2 && last <= 4) return `${count} ${forms[1]}`;
+  return `${count} ${forms[2]}`;
+}
+
 function protocolVersion(entry, session) {
   const own = normalizeProtocolVersion(entry?.protocol_version);
   return own === '?' ? normalizeProtocolVersion(session?.protocol_version) : own;
@@ -171,48 +180,103 @@ function notice(heading, message) {
 
 function buildChart(measurement, points) {
   const card = el('section', 'card history-chart');
-  card.append(el('h2', null, measurement.label));
+  const heading = el('header', 'history-card__head');
+  const titles = el('div', 'history-card__titles');
+  titles.append(
+    el('span', 'history-card__kicker', 'Динамика'),
+    el('h2', 'history-card__title', measurement.label)
+  );
+  heading.append(titles, el('span', 'history-card__meta', countText(points.length, ['точка', 'точки', 'точек'])));
+  card.append(heading);
+
   if (points.length === 0) {
-    card.append(el('p', 'history-empty', 'Для этого замера пока нет данных.'));
+    const empty = el('div', 'history-empty history-empty--chart');
+    empty.append(
+      el('strong', 'history-empty__title', 'График появится после первого замера'),
+      el('p', 'history-empty__text', 'Для этого замера пока нет данных.')
+    );
+    card.append(empty);
     return card;
   }
 
-  card.append(sparkline(points));
+  const ordered = points.slice().sort((left, right) => left.date.localeCompare(right.date));
+  const first = ordered[0];
+  const latest = ordered[ordered.length - 1];
+  const summary = el('div', 'history-chart__summary');
+  const reading = el('div', 'history-chart__reading');
+  reading.append(
+    el('span', 'history-chart__marker'),
+    el('strong', null, formatValue(latest.value, measurement.unit))
+  );
+  summary.append(
+    el('span', 'history-chart__caption', 'Последний замер'),
+    reading,
+    el('span', 'history-chart__when', formatDate(latest.date))
+  );
+
+  const plot = el('div', 'history-chart__plot');
+  plot.append(sparkline(points));
+  const span = el('div', 'history-chart__span');
+  span.append(el('span', null, formatDate(first.date)));
+  if (first.date !== latest.date) span.append(el('span', null, formatDate(latest.date)));
+  plot.append(span);
+  card.append(summary, plot);
 
   const versions = Array.from(new Set(points.map((point) => point.protocol_version ?? '?')));
+  const foot = el('footer', 'history-chart__foot');
   if (versions.length > 1) {
     const legend = el('p', 'field__hint history-legend');
     legend.textContent = `Протоколы ${versions.map((version) => `v${version}`).join(', ')} показаны отдельными линиями.`;
-    card.append(legend);
+    foot.append(legend);
   }
   if (measurement.unit === 'cm') {
-    card.append(el('p', 'field__hint', 'Колебания меньше 2 см не считаются заметной динамикой.'));
+    foot.append(el('p', 'field__hint', 'Колебания меньше 2 см не считаются заметной динамикой.'));
   }
+  if (foot.children.length > 0) card.append(foot);
   return card;
 }
 
 function buildTable(measurement, rows) {
   const card = el('section', 'card history-list');
-  card.append(el('h2', null, 'Замеры'));
+  const heading = el('header', 'history-card__head history-card__head--table');
+  const titles = el('div', 'history-card__titles');
+  titles.append(
+    el('span', 'history-card__kicker', 'Журнал'),
+    el('h2', 'history-card__title', 'Сессии замеров')
+  );
+  heading.append(titles, el('span', 'history-card__meta', countText(rows.length, ['сессия', 'сессии', 'сессий'])));
+  card.append(heading);
+
   if (rows.length === 0) {
-    card.append(el('p', 'history-empty', 'Исходных сессий с этим замером не найдено.'));
+    const empty = el('div', 'history-empty history-empty--table');
+    empty.append(
+      el('strong', 'history-empty__title', 'Сессий пока нет'),
+      el('p', 'history-empty__text', 'Исходных сессий с этим замером не найдено.')
+    );
+    card.append(empty);
     return card;
   }
 
   const wrapper = el('div', 'history-table-wrap');
+  wrapper.setAttribute('tabindex', '0');
+  wrapper.setAttribute('aria-label', 'Таблица прокручивается по горизонтали');
   const table = el('table', 'history-table');
+  table.setAttribute('aria-label', `Сессии замера «${measurement.label}»`);
   const head = el('thead');
   const headings = el('tr');
   for (const label of ['Дата', 'Значение', 'Повторы', 'Протокол']) {
-    headings.append(el('th', null, label));
+    const cell = el('th', null, label);
+    cell.setAttribute('scope', 'col');
+    headings.append(cell);
   }
   head.append(headings);
 
   const body = el('tbody');
   let previousProtocol = rows[0].protocol;
   for (const row of rows) {
-    const tr = el('tr');
-    if (row.protocol !== previousProtocol) tr.className = 'history-protocol-break';
+    const tr = el('tr', row.protocol !== previousProtocol
+      ? 'history-table__entry history-protocol-break'
+      : 'history-table__entry');
 
     const when = el('td', 'history-table__when', formatDate(row.date));
     if (row.time) when.append(el('span', 'history-table__time', row.time));

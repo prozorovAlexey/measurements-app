@@ -417,7 +417,15 @@ await step('неизвестный ключ объясняется и не за�
 
 await step('CSS содержит все новые классы истории', () => {
   const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
-  for (const name of ['history-table', 'history-table__reps', 'history-protocol-break', 'sparkline__line']) {
+  for (const name of [
+    'history-card__head',
+    'history-chart__summary',
+    'history-chart__plot',
+    'history-table',
+    'history-table__reps',
+    'history-protocol-break',
+    'sparkline__line'
+  ]) {
     assert.ok(css.includes(`.${name}`), `нет .${name}`);
   }
 });

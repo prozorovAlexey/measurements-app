@@ -235,6 +235,25 @@ await step('DOM: две даты-селектора, дефолт «было»=�
   assert.equal(selects[1].value, '2026-08-19', 'стало — не самая поздняя дата');
 });
 
+await step('DOM T22: даты, KPI и таблица собраны из новых карточек сравнения', async () => {
+  const root = await renderCompare(CMP_INDEX);
+  const dates = firstByClass(root, 'cmp-dates');
+  assert.ok(dates?.classList.contains('card'), 'выбор дат не оформлен карточкой');
+  assert.equal(byClass(dates, 'cmp-date-field').length, 2, 'нет двух полей дат T22');
+  assert.equal(byClass(dates, 'cmp-dates__arrow').length, 1, 'нет указателя направления между датами');
+
+  const kpis = byClass(root, 'kpi--compare');
+  assert.equal(kpis.length, 4, 'четыре KPI не используют карточку сравнения');
+  assert.equal(byClass(root, 'kpi__dot').length, 4, 'у KPI нет четырёх индикаторов из T20');
+  const waist = kpis.find((card) => firstByClass(card, 'kpi__label')?.textContent === 'Δ талии');
+  assert.ok(waist?.classList.contains('kpi--delta-up'), 'индикатор талии не следует tone из asof.delta()');
+
+  const tableCard = firstByClass(root, 'cmp-table-card');
+  assert.ok(tableCard?.classList.contains('card'), 'таблица не оформлена карточкой');
+  assert.equal(firstByClass(tableCard, 'cmp-table-card__title')?.textContent, 'Изменение размеров');
+  assert.ok(firstByClass(tableCard, 'cmp-table'), 'таблица потеряна внутри карточки');
+});
+
 await step('DOM: таблица покрывает все 22 замера каталога, без группировки на «Фигуре»', async () => {
   const root = await renderCompare(CMP_INDEX);
   const table = firstByClass(root, 'cmp-table');
@@ -318,6 +337,14 @@ await step('сторож: экран read-only, Δ красится только
   assert.doesNotMatch(code, /\b(?:writeFile|listFiles|enqueue|enqueueEntry)\b/, 'compare.js не должен уметь писать данные');
   assert.match(code, /import \{ delta, sliceAt, sliceDates \} from '\.\.\/asof\.js'/);
   assert.doesNotMatch(code, /\btone\s*:/, 'экран не конструирует tone вручную');
+  assert.doesNotMatch(code, /\bsilhouette\s*\(/, 'T22 не должен добавлять наложение силуэтов');
+});
+
+await step('сторож T22: тач-цель дат, карточка таблицы и видимый общий focus заданы в CSS', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.cmp-date-field \.cmp-date-field__select\s*\{[\s\S]*?min-height:\s*var\(--tap\)/);
+  assert.match(css, /\.cmp-table-card\s*\{[\s\S]*?box-shadow:\s*var\(--sh-card\)/);
+  assert.match(css, /:where\([^)]*select[^)]*\):focus-visible\s*\{[\s\S]*?outline:\s*2px solid var\(--ac\)/);
 });
 
 await step('роутер: app.js знает про #/compare, вкладку «Фигура» и широкую раскладку', () => {

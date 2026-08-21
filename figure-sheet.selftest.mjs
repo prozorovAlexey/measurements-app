@@ -258,6 +258,22 @@ await step('строка списка открывает шторку с про�
   assert.equal(hint.textContent, 'Первый замер', 'талия WHO не измерялась вовсе — подсказка обязана это сказать');
 });
 
+await step('T21: редактор использует новую структуру степпера и протокола', async () => {
+  const root = await renderScreen();
+  const row = byClass(root, 'mrow').find((item) => item.dataset.key === 'waist_who');
+  row.dispatch('click');
+  const sheet = firstByClass(root, 'sheet');
+  assert.ok(sheet.classList.contains('sheet--editor'), 'шторка конкретного замера обязана быть editor-вида');
+  assert.equal(byClass(sheet, 'sheet__protocol--landmark').length, 1, 'ориентир обязан иметь свой уровень контраста');
+  assert.equal(byClass(sheet, 'sheet__protocol--posture').length, 1, 'поза обязана иметь свой уровень контраста');
+  assert.ok(firstByClass(sheet, 'sheet__value'), 'значение обязано лежать в отдельном жёлобе степпера');
+  assert.ok(firstByClass(sheet, 'sheet__slider'), 'ползунок ui_range обязан оставаться частью редактора');
+
+  const styles = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  assert.match(styles, /\.sheet__value\s*\{[\s\S]*?background:\s*var\(--surface-2\)/, 'жёлоб значения обязан использовать токен вторичной поверхности');
+  assert.doesNotMatch(styles, /\.sheet__slider,\s*\.sheet__range\s*\{\s*display:\s*none;/, 'T21: слайдер не должен исчезать в desktop-виде');
+});
+
 await step('выноска силуэта открывает ровно ту же шторку', async () => {
   const root = await renderScreen();
   const guide = byClass(root, 'fig-guide').find((node) => node.getAttribute('aria-label') === 'Внести замер: Грудь');

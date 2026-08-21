@@ -248,7 +248,7 @@ function buildSheet(sheet, { onClose, onSave }) {
     if (event.target === scrim) onClose();
   });
 
-  const card = el('div', 'sheet');
+  const card = el('div', 'sheet sheet--editor');
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-modal', 'true');
   card.addEventListener('click', (event) => event.stopPropagation());
@@ -259,13 +259,23 @@ function buildSheet(sheet, { onClose, onSave }) {
   head.append(el('span', 'sheet__date', `Запишется на ${formatDate(todayISO())}`));
   card.append(head);
 
-  for (const line of protocolLines(entry)) card.append(el('p', 'sheet__protocol', line));
+  const protocols = protocolLines(entry);
+  if (protocols.length > 0) {
+    const protocol = el('div', 'sheet__protocols');
+    for (const line of protocols) {
+      const kind = line.startsWith('Ориентир:') ? 'landmark' : 'posture';
+      protocol.append(el('p', `sheet__protocol sheet__protocol--${kind}`, line));
+    }
+    card.append(protocol);
+  }
 
   card.append(el('p', 'sheet__hint', point
     ? `Было ${formatMeasurement(point.value, entry.unit)}`
     : 'Первый замер'));
 
   const stepper = el('div', 'sheet__stepper');
+  stepper.setAttribute('role', 'group');
+  stepper.setAttribute('aria-label', `Значение замера «${entry.label}»`);
   const dec = el('button', 'sheet__step', '−');
   dec.type = 'button';
   dec.setAttribute('aria-label', 'Уменьшить');
@@ -273,6 +283,7 @@ function buildSheet(sheet, { onClose, onSave }) {
   const input = document.createElement('input');
   input.type = 'text';
   input.setAttribute('inputmode', 'decimal');
+  input.setAttribute('aria-label', `Значение, ${UNIT_LABELS.get(entry.unit) ?? (entry.unit || '')}`);
   input.autocomplete = 'off';
   input.className = 'sheet__input';
   input.value = formatNumber(sheet.draft);
@@ -293,6 +304,7 @@ function buildSheet(sheet, { onClose, onSave }) {
     slider.max = String(entry.ui_range.max);
     slider.step = String(entry.ui_range.step);
     slider.value = String(sheet.draft);
+    slider.setAttribute('aria-label', `Значение замера «${entry.label}»`);
     card.append(slider);
     const range = el('div', 'sheet__range');
     range.append(el('span', null, formatMeasurement(entry.ui_range.min, entry.unit)));
@@ -322,12 +334,12 @@ function buildSheet(sheet, { onClose, onSave }) {
   if (slider) slider.addEventListener('input', () => setDraft(Number(slider.value)));
 
   const actions = el('div', 'sheet__actions');
-  const history = el('a', 'btn', 'История');
+  const history = el('a', 'btn sheet__history', 'История');
   history.href = `#/history/${encodeURIComponent(entry.key)}`;
-  const cancel = el('button', 'btn', 'Отмена');
+  const cancel = el('button', 'btn sheet__cancel', 'Отмена');
   cancel.type = 'button';
   cancel.addEventListener('click', onClose);
-  const save = el('button', 'btn btn--primary', sheet.saving ? 'Сохраняю…' : 'Сохранить');
+  const save = el('button', 'btn btn--primary sheet__save', sheet.saving ? 'Сохраняю…' : 'Сохранить');
   save.type = 'button';
   save.disabled = sheet.saving;
   save.addEventListener('click', onSave);

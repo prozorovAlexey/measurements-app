@@ -128,10 +128,11 @@ function buildDeltaBadge(change, unit) {
 
 // ===== Даты среза (§7.6: «Два селекта… по датам срезов») ==================
 
-function buildDateField(labelText, dates, selected, onChange) {
-  const field = el('label', 'field');
-  field.append(el('span', 'label', labelText));
+function buildDateField(labelText, dates, selected, modifier, onChange) {
+  const field = el('label', `field cmp-date-field cmp-date-field--${modifier}`);
+  field.append(el('span', 'label cmp-date-field__label', labelText));
   const select = document.createElement('select');
+  select.className = 'cmp-date-field__select';
   select.setAttribute('aria-label', labelText);
   for (const date of dates) {
     const option = document.createElement('option');
@@ -147,14 +148,18 @@ function buildDateField(labelText, dates, selected, onChange) {
 }
 
 function buildDateFields() {
-  const wrap = el('div', 'cmp-dates card');
+  const wrap = el('section', 'cmp-dates card');
+  wrap.setAttribute('aria-label', 'Даты сравнения');
+  const arrow = el('span', 'cmp-dates__arrow', '→');
+  arrow.setAttribute('aria-hidden', 'true');
   wrap.append(
-    buildDateField('Было', state.dates, state.dateA, (value) => {
+    buildDateField('Было', state.dates, state.dateA, 'before', (value) => {
       if (state === null) return;
       state.dateA = value;
       paint();
     }),
-    buildDateField('Стало', state.dates, state.dateB, (value) => {
+    arrow,
+    buildDateField('Стало', state.dates, state.dateB, 'after', (value) => {
       if (state === null) return;
       state.dateB = value;
       paint();
@@ -182,6 +187,19 @@ function ensureSelectedDates() {
 
 // ===== KPI: Δ веса, Δ талии, ИМТ, число дней между срезами (§7.6 спеки) ====
 
+function buildCompareKpi(label, value, sub, tone = null) {
+  const classes = ['kpi', 'kpi--compare'];
+  if (tone) classes.push(`kpi--delta-${tone}`);
+  const card = el('article', classes.join(' '));
+  const dot = el('span', 'kpi__dot');
+  dot.setAttribute('aria-hidden', 'true');
+  const valueNode = el('strong', value === null ? 'kpi__value kpi__value--missing' : 'kpi__value');
+  if (typeof value === 'string') valueNode.textContent = value;
+  else if (value) valueNode.append(value);
+  card.append(dot, valueNode, el('span', 'kpi__label', label), el('span', 'kpi__sub', sub));
+  return card;
+}
+
 function buildKpis(sliceA, sliceB) {
   const weightEntry = getMeasurement('weight');
   const waistEntry = getMeasurement('waist_who');
@@ -197,37 +215,17 @@ function buildKpis(sliceA, sliceB) {
   const dayA = epochDay(state.dateA);
   const dayB = epochDay(state.dateB);
   const days = dayA !== null && dayB !== null ? Math.abs(dayB - dayA) : null;
+  const weightChange = delta(weightA, weightB, weightEntry);
+  const waistChange = delta(waistA, waistB, waistEntry);
 
   const grid = el('section', 'kpi-grid kpi-grid--4');
   grid.setAttribute('aria-label', 'Сравнение срезов');
-
-  const weightCard = el('article', 'kpi kpi--weight');
-  weightCard.append(el('span', 'kpi__label', 'Δ веса'));
-  const weightValue = el('strong', 'kpi__value');
-  weightValue.append(buildDeltaBadge(delta(weightA, weightB, weightEntry), 'kg'));
-  weightCard.append(weightValue, el('span', 'kpi__sub', 'между срезами'));
-
-  const waistCard = el('article', 'kpi');
-  waistCard.append(el('span', 'kpi__label', 'Δ талии'));
-  const waistValue = el('strong', 'kpi__value');
-  waistValue.append(buildDeltaBadge(delta(waistA, waistB, waistEntry), 'cm'));
-  waistCard.append(waistValue, el('span', 'kpi__sub', 'между срезами'));
-
-  const bmiCard = el('article', 'kpi kpi--bmi');
-  bmiCard.append(
-    el('span', 'kpi__label', 'ИМТ'),
-    el('strong', bmi === null ? 'kpi__value kpi__value--missing' : 'kpi__value', bmi === null ? '—' : formatNumber(bmi, 1)),
-    el('span', 'kpi__sub', bmi === null ? 'нужны рост и вес' : 'расчётный, на дату «стало»')
+  grid.append(
+    buildCompareKpi('Δ веса', buildDeltaBadge(weightChange, 'kg'), 'между срезами', weightChange.tone),
+    buildCompareKpi('Δ талии', buildDeltaBadge(waistChange, 'cm'), 'между срезами', waistChange.tone),
+    buildCompareKpi('ИМТ', bmi === null ? null : formatNumber(bmi, 1), bmi === null ? 'нужны рост и вес' : 'расчётный, на дату «стало»'),
+    buildCompareKpi('Между срезами', days === null ? null : `${days} ${pluralDays(days)}`, 'дней')
   );
-
-  const daysCard = el('article', 'kpi');
-  daysCard.append(
-    el('span', 'kpi__label', 'Между срезами'),
-    el('strong', days === null ? 'kpi__value kpi__value--missing' : 'kpi__value', days === null ? '—' : `${days} ${pluralDays(days)}`),
-    el('span', 'kpi__sub', 'дней')
-  );
-
-  grid.append(weightCard, waistCard, bmiCard, daysCard);
   return grid;
 }
 
@@ -237,32 +235,45 @@ function buildKpis(sliceA, sliceB) {
 
 function buildValueCell(point, unit) {
   const text = point ? formatMeasurement(point.value, unit) : '—';
-  return el('td', point?.pending ? 'pending' : null, text);
+  return el('td', point?.pending ? 'cmp-table__value pending' : 'cmp-table__value', text);
 }
 
 function buildTable(measurements, sliceA, sliceB) {
+  const card = el('section', 'cmp-table-card card');
+  const heading = el('header', 'cmp-table-card__head');
+  heading.append(
+    el('h2', 'cmp-table-card__title', 'Изменение размеров'),
+    el('span', 'cmp-table-card__range', `${formatDate(state.dateA)} → ${formatDate(state.dateB)}`)
+  );
   const wrap = el('div', 'cmp-table-wrap');
   const table = el('table', 'cmp-table');
+  table.setAttribute('aria-label', 'Изменение замеров между выбранными датами');
 
   const thead = el('thead');
   const headRow = el('tr');
-  headRow.append(
-    el('th', null, 'Показатель'),
-    el('th', null, 'Было'),
-    el('th', null, 'Стало'),
-    el('th', null, 'Δ')
-  );
+  for (const [label, className] of [
+    ['Показатель', 'cmp-table__measure'],
+    ['Было', null],
+    ['Стало', 'cmp-table__after'],
+    ['Δ', 'cmp-table__change']
+  ]) {
+    const cell = el('th', className, label);
+    cell.setAttribute('scope', 'col');
+    headRow.append(cell);
+  }
   thead.append(headRow);
 
   const tbody = el('tbody');
   for (const entry of measurements) {
     const pointA = pointOf(sliceA, entry.key);
     const pointB = pointOf(sliceB, entry.key);
-    const row = el('tr');
-    row.append(el('td', null, entry.label));
+    const row = el('tr', 'cmp-table__row');
+    const name = el('th', 'cmp-table__name', entry.label);
+    name.setAttribute('scope', 'row');
+    row.append(name);
     row.append(buildValueCell(pointA, entry.unit));
     row.append(buildValueCell(pointB, entry.unit));
-    const deltaCell = el('td');
+    const deltaCell = el('td', 'cmp-table__delta');
     deltaCell.append(buildDeltaBadge(delta(pointA, pointB, entry), entry.unit));
     row.append(deltaCell);
     tbody.append(row);
@@ -270,7 +281,8 @@ function buildTable(measurements, sliceA, sliceB) {
 
   table.append(thead, tbody);
   wrap.append(table);
-  return wrap;
+  card.append(heading, wrap);
+  return card;
 }
 
 // ===== Пустое состояние, ошибки, загрузка ==================================

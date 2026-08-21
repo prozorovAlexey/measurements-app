@@ -516,12 +516,17 @@ await step('офлайн-первичность: первая отрисовка
 
 await step('DOM: пять карточек размеров с дисклеймером в каждой', async () => {
   const root = await renderScreen(SIZE_INDEX);
+  const grid = firstByClass(root, 'sizecards');
   const cards = byClass(root, 'sizecard');
+  assert.ok(grid.classList.contains('kpi-grid'), 'сетка размеров должна переиспользовать KPI-сетку T20');
   assert.equal(cards.length, 5, `карточек размеров: ${cards.length}, а не 5`);
   assert.deepEqual(cards.map((card) => firstByTag(card, 'h2')?.textContent), [
     'Одежда', 'Рубашка', 'Джинсы', 'Обувь', 'Кольцо'
   ]);
   for (const card of cards) {
+    assert.ok(card.classList.contains('kpi'), 'карточка размера должна переиспользовать KPI-карточку T20');
+    assert.ok(firstByClass(card, 'kpi__dot'), 'в карточке нет общего KPI-индикатора');
+    assert.ok(firstByClass(card, 'kpi__label'), 'заголовок карточки не использует подпись KPI');
     const hints = byClass(card, 'field__hint').map((node) => node.textContent);
     assert.ok(hints.includes(SIZE_DISCLAIMER), 'дисклеймер «ориентир» не найден в карточке');
   }
@@ -574,6 +579,9 @@ await step('DOM: составная карточка — не хватает п�
 
 await step('DOM: список из семи замеров вне фигуры — точный порядок, каждая строка кликабельна', async () => {
   const root = await renderScreen(SIZE_INDEX);
+  const section = firstByClass(root, 'sizes-measurements');
+  assert.ok(section, 'список остальных замеров не получил контейнер T23');
+  assert.ok(firstByClass(section, 'sizes-measurements__list'), 'строки не собраны в визуальный список T23');
   const rows = byClass(root, 'mrow');
   assert.deepEqual(rows.map((row) => row.dataset.key), [
     'waist_umbilicus', 'waist_natural', 'biceps_flexed',
