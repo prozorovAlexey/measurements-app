@@ -13,8 +13,10 @@ import { sparkline } from '../sparkline.js';
 import {
   getIndexCache,
   getProfile,
+  getShowAllCallouts,
   setIndexCache,
-  setProfile
+  setProfile,
+  setShowAllCallouts
 } from '../store.js';
 
 export const title = 'Фигура';
@@ -56,6 +58,23 @@ const CALLOUT_SIDE = new Map([
   ['thigh', 'left'],
   ['calf', 'right'],
   ['foot_length', 'left']
+]);
+
+// T19: свитч «Показывать все» скрывает второстепенные выноски (таз/голень/
+// стопа), оставляя шесть основных — тот же список tier:1, что в макете
+// (Замеры - Фигура.dc.html, CALL). По умолчанию свитч включён — все девять,
+// как было до T19.
+const CALLOUT_PRIMARY = new Set([
+  'shoulder_width', 'chest', 'biceps_relaxed', 'waist_who', 'hip', 'thigh'
+]);
+
+// Короткая подпись на плашке выноски — только там, где полная подпись
+// каталога заметно длиннее (иначе на плашке используется entry.label как есть).
+const CALLOUT_SHORT = new Map([
+  ['shoulder_width', 'Плечи'],
+  ['waist_who', 'Талия'],
+  ['biceps_relaxed', 'Бицепс'],
+  ['foot_length', 'Стопа']
 ]);
 
 let mountToken = 0;
@@ -518,35 +537,60 @@ function buildDateStrip(dates, selectedDate, pendingDates) {
   return section;
 }
 
-function buildProfileField(profile) {
-  const field = el('label', 'fig-profile');
-  const label = el('span', 'fig-profile__label', 'Силуэт');
-  const select = el('select', 'fig-profile__select');
-  select.setAttribute('aria-label', 'Пол фигуры');
-
-  const male = el('option', null, 'Мужской');
-  male.value = 'male';
-  const female = el('option', null, 'Женский');
-  female.value = 'female';
-  select.append(male, female);
-  select.value = profile.sex;
-  select.addEventListener('change', () => {
-    if (state === null) return;
-    state.profile = setProfile({ sex: select.value });
+// Пол фигуры — сегментированная пилюля (T19), не <select>: то же визуальное
+// решение из макета, что и у .subtabs выше.
+function buildSexItem(label, sex, active) {
+  const item = el('button', active ? 'fig-sex__item fig-sex__item--active' : 'fig-sex__item', label);
+  item.type = 'button';
+  item.setAttribute('role', 'radio');
+  item.setAttribute('aria-checked', active ? 'true' : 'false');
+  item.addEventListener('click', () => {
+    if (state === null || state.profile.sex === sex) return;
+    state.profile = setProfile({ sex });
     paint();
   });
+  return item;
+}
 
-  field.append(label, select);
+function buildSexField(profile) {
+  const field = el('div', 'fig-sex');
+  field.setAttribute('role', 'radiogroup');
+  field.setAttribute('aria-label', 'Пол фигуры');
+  field.append(
+    buildSexItem('Мужской', 'male', profile.sex === 'male'),
+    buildSexItem('Женский', 'female', profile.sex === 'female')
+  );
   return field;
 }
 
-// Примерная ширина символа кириллицы при font-size 8.5px (fig-guide) —
-// нужна только чтобы прикинуть, докуда тянется текст подсказки: не точный
-// замер (getBBox недоступен до вставки узла в документ), а достаточный
-// запас, чтобы скруглённая подсветка не обрезала длинные подписи вроде
-// «Бицепс расслабл.».
-const CALLOUT_NAME_GLYPH = 5.4;
-const CALLOUT_READING_GLYPH = 6.2;
+// Свитч «Показывать все» под силуэтом (T19) — тот же компонент, что и
+// .theme-toggle в шапке (T17): один визуальный контрол, два независимых
+// экземпляра с разным aria-label и обработчиком.
+function buildPinsToggle(showAll) {
+  const row = el('div', 'fig-pins');
+  row.append(el('span', 'fig-pins__label', showAll ? 'Показывать все' : 'Только основные'));
+  const toggle = el('button', 'theme-toggle');
+  toggle.type = 'button';
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', showAll ? 'true' : 'false');
+  toggle.setAttribute('aria-label', 'Показывать все выноски силуэта');
+  toggle.append(el('span', 'theme-toggle__knob'));
+  toggle.addEventListener('click', () => {
+    if (state === null) return;
+    state.showAllCallouts = setShowAllCallouts(!state.showAllCallouts);
+    paint();
+  });
+  row.append(toggle);
+  return row;
+}
+
+// Примерная ширина символа кириллицы для двух кеглей плашки (fig-guide__name
+// 6.8px, fig-guide__reading 10.5px) — нужна только чтобы прикинуть, докуда
+// тянется текст: не точный замер (getBBox недоступен до вставки узла
+// в документ), а достаточный запас, чтобы плашка не обрезала длинные
+// значения вроде «100,5 см».
+const CALLOUT_NAME_GLYPH = 4.6;
+const CALLOUT_READING_GLYPH = 6.6;
 
 function calloutTextSpan(label, readingText) {
   const nameWidth = label.length * CALLOUT_NAME_GLYPH;
@@ -554,6 +598,15 @@ function calloutTextSpan(label, readingText) {
   return Math.max(nameWidth, readingWidth, 20);
 }
 
+// Выноска-«плашка» (T19, вариант 1b из NewDesignTemplate/«Выноски -
+// Варианты.dc.html», уже применённый в NewDesignTemplate/«Замеры -
+// Фигура.dc.html»): скруглённая подложка вокруг подписи+значения видна
+// всегда, не только при наведении — line+dot ведут к телу коротким
+// хвостиком в макете, но здесь линия по-прежнему тянется до фиксированного
+// столбца (54/306): на узком мобильном экране короткие хвостики у самого
+// контура быстро налезли бы друг на друга по вертикали при 6-9 выносках
+// сразу, а столбец страхует от коллизий (мобильный сценарий — основной,
+// §10 контракта; макет — desktop-канва design-tool).
 function buildCallout(entry, point, node) {
   const side = CALLOUT_SIDE.get(entry.key) ?? 'right';
   const left = side === 'left';
@@ -567,6 +620,7 @@ function buildCallout(entry, point, node) {
   const edge = left ? node.x1 : node.x2;
   const end = left ? 54 : 306;
   const textX = left ? 48 : 312;
+  const shortLabel = CALLOUT_SHORT.get(entry.key) ?? entry.label;
   const readingText = measured ? formatMeasurement(point.value, entry.unit) : '—';
 
   // Тач-цель шире тонкой выноски и обязана дотягиваться до края канвы со
@@ -580,15 +634,15 @@ function buildCallout(entry, point, node) {
   const hitLeft = left ? 4 : attachBound;
   const hitRight = left ? bodyBound : FIGURE_WIDTH - 4;
   hit.setAttribute('x', hitLeft);
-  hit.setAttribute('y', node.y - 14);
+  hit.setAttribute('y', node.y - 16);
   hit.setAttribute('width', hitRight - hitLeft);
-  hit.setAttribute('height', 30);
+  hit.setAttribute('height', 34);
 
-  // Мягкая скруглённая подсветка вокруг подписи — визуальная замена грубой
-  // системной рамки фокуса (см. .fig-guide:focus-visible в style.css) и
-  // ориентир при наведении (§4 задания: анимация наведения).
-  const span = calloutTextSpan(entry.label, readingText);
-  const highlightPad = 5;
+  // Плашка вокруг подписи — всегда видна (в отличие от T13, где подсветка
+  // появлялась только на фокусе/наведении), цвет несёт состояние
+  // измерен/не измерен, hover/focus подсвечивают акцентом (style.css).
+  const span = calloutTextSpan(shortLabel, readingText);
+  const highlightPad = 6;
   const highlight = svgEl('rect', 'fig-guide__highlight');
   const highlightLeft = left
     ? Math.max(2, textX - span - highlightPad)
@@ -597,10 +651,10 @@ function buildCallout(entry, point, node) {
     ? textX + highlightPad
     : Math.min(FIGURE_WIDTH - 2, textX + span + highlightPad);
   highlight.setAttribute('x', highlightLeft);
-  highlight.setAttribute('y', node.y - 13);
+  highlight.setAttribute('y', node.y - 15);
   highlight.setAttribute('width', highlightRight - highlightLeft);
-  highlight.setAttribute('height', 27);
-  highlight.setAttribute('rx', 6);
+  highlight.setAttribute('height', 30);
+  highlight.setAttribute('rx', 8);
 
   const line = svgEl('line');
   line.setAttribute('x1', edge);
@@ -608,11 +662,16 @@ function buildCallout(entry, point, node) {
   line.setAttribute('y1', node.y);
   line.setAttribute('y2', node.y);
 
+  const dot = svgEl('circle', 'fig-guide__dot');
+  dot.setAttribute('cx', edge);
+  dot.setAttribute('cy', node.y);
+  dot.setAttribute('r', 3);
+
   const name = svgEl('text', 'fig-guide__name');
   name.setAttribute('x', textX);
   name.setAttribute('y', node.y - 4);
   name.setAttribute('text-anchor', left ? 'end' : 'start');
-  name.textContent = entry.label;
+  name.textContent = shortLabel;
 
   const reading = svgEl('text', measured && point.pending
     ? 'fig-guide__reading pending'
@@ -622,7 +681,7 @@ function buildCallout(entry, point, node) {
   reading.setAttribute('text-anchor', left ? 'end' : 'start');
   reading.textContent = readingText;
 
-  guide.append(hit, highlight, line, name, reading);
+  guide.append(hit, highlight, line, dot, name, reading);
   guide.addEventListener('click', () => state?.sheetCtrl?.open(entry.key));
   guide.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -632,11 +691,14 @@ function buildCallout(entry, point, node) {
   return guide;
 }
 
-function buildFigureCard(measurements, slice, profile, empty) {
+function buildFigureCard(measurements, slice, profile, empty, showAllCallouts) {
   const values = valuesOf(measurements, slice);
   const geometry = silhouette(values, { figure: profile.sex });
   const card = el('section', empty ? 'fig-card fig-card--empty' : 'fig-card');
-  card.append(buildProfileField(profile));
+
+  const header = el('div', 'fig-profile');
+  header.append(el('span', 'fig-profile__label', 'Силуэт'), buildSexField(profile));
+  card.append(header);
 
   const svg = svgEl('svg', 'fig-svg');
   svg.setAttribute('viewBox', `0 0 ${FIGURE_WIDTH} 552`);
@@ -647,19 +709,39 @@ function buildFigureCard(measurements, slice, profile, empty) {
   svgTitle.setAttribute('id', 'figure-svg-title');
   svgTitle.textContent = empty ? 'Приглушённый силуэт без замеров' : 'Силуэт по выбранному срезу';
 
+  // Заливка градиентом (T19) — .fig-body ссылается на неё через
+  // fill: url(#figure-body-gradient) в style.css, цвет самих стопов тоже
+  // идёт из var(--body-grad-*), а не литералом.
+  const defs = svgEl('defs');
+  const gradient = svgEl('linearGradient');
+  gradient.setAttribute('id', 'figure-body-gradient');
+  gradient.setAttribute('x1', '0');
+  gradient.setAttribute('y1', '0');
+  gradient.setAttribute('x2', '0');
+  gradient.setAttribute('y2', '1');
+  const stopTop = svgEl('stop');
+  stopTop.setAttribute('offset', '0');
+  stopTop.setAttribute('stop-color', 'var(--body-grad-top)');
+  const stopBottom = svgEl('stop');
+  stopBottom.setAttribute('offset', '1');
+  stopBottom.setAttribute('stop-color', 'var(--body-grad-bottom)');
+  gradient.append(stopTop, stopBottom);
+  defs.append(gradient);
+
   const ground = svgEl('ellipse', 'fig-ground');
   ground.setAttribute('cx', '180');
   ground.setAttribute('cy', geometry.ground.y);
   ground.setAttribute('rx', geometry.ground.r);
-  ground.setAttribute('ry', '5');
+  ground.setAttribute('ry', '5.5');
 
   const body = svgEl('path', 'fig-body');
   body.setAttribute('d', geometry.paths[0].d);
 
-  svg.append(svgTitle, ground, body);
+  svg.append(svgTitle, defs, ground, body);
 
   const byKey = new Map(measurements.map((entry) => [entry.key, entry]));
-  for (const key of CALLOUT_KEYS) {
+  const calloutKeys = showAllCallouts ? CALLOUT_KEYS : CALLOUT_KEYS.filter((key) => CALLOUT_PRIMARY.has(key));
+  for (const key of calloutKeys) {
     const entry = byKey.get(key);
     const node = entry?.svg_id ? geometry.nodes[entry.svg_id] : null;
     if (!entry || !node) continue;
@@ -667,11 +749,18 @@ function buildFigureCard(measurements, slice, profile, empty) {
   }
 
   card.append(svg);
+  card.append(buildPinsToggle(showAllCallouts));
   return card;
 }
 
-function buildKpi(label, value, sub, tone) {
-  const card = el('article', `kpi kpi--interactive${tone ? ` kpi--${tone}` : ''}`);
+// Точка-индикатор вместо тонированного фона карточки (T20, макет) — цвет
+// несёт тот же смысл, что раньше нёс фон целиком. tone — имя KPI для
+// сторожей/детального окна (weight/bmi/whr), status — good/warn для
+// ИМТ и WHR (нет status у веса — у него нет диапазона нормы).
+function buildKpi(label, value, unit, sub, tone, status) {
+  const classes = ['kpi', 'kpi--interactive', `kpi--${tone}`];
+  if (status) classes.push(`kpi--${status}`);
+  const card = el('article', classes.join(' '));
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-haspopup', 'dialog');
@@ -682,9 +771,13 @@ function buildKpi(label, value, sub, tone) {
     event.preventDefault();
     state?.detailCtrl?.open(tone, card);
   });
+  card.append(el('span', 'kpi__dot'));
+  const figures = el('div', 'kpi__figures');
+  figures.append(el('strong', value === '—' ? 'kpi__value kpi__value--missing' : 'kpi__value', value));
+  if (unit) figures.append(el('span', 'kpi__unit', unit));
   card.append(
+    figures,
     el('span', 'kpi__label', label),
-    el('strong', value === '—' ? 'kpi__value kpi__value--missing' : 'kpi__value', value),
     el('span', 'kpi__sub', sub)
   );
   return card;
@@ -699,27 +792,35 @@ function buildKpis(slice) {
     ? weight.value / ((height.value / 100) ** 2)
     : null;
   const whr = waist && hip && hip.value > 0 ? waist.value / hip.value : null;
+  const bmiGood = bmi !== null && bmi >= 18.5 && bmi < 25;
+  const threshold = state?.profile?.sex === 'female' ? 0.85 : 0.90;
+  const whrGood = whr !== null && whr < threshold;
 
   const grid = el('section', 'kpi-grid', undefined);
   grid.setAttribute('aria-label', 'Ключевые показатели');
   grid.append(
     buildKpi(
       'Вес',
-      weight ? formatMeasurement(weight.value, 'kg') : '—',
+      weight ? formatNumber(weight.value) : '—',
+      'кг',
       weight ? formatDate(weight.date) : 'не измерено',
       'weight'
     ),
     buildKpi(
       'ИМТ',
       bmi === null ? '—' : formatNumber(bmi, 1),
+      '',
       bmi === null ? 'нужны рост и вес' : 'расчётный',
-      'bmi'
+      'bmi',
+      bmi === null ? null : (bmiGood ? 'good' : 'warn')
     ),
     buildKpi(
       'Талия / бёдра',
       whr === null ? '—' : formatNumber(whr, 2),
+      '',
       whr === null ? 'нужны талия WHO и бёдра' : 'расчётный WHR',
-      'whr'
+      'whr',
+      whr === null ? null : (whrGood ? 'good' : 'warn')
     )
   );
   return grid;
@@ -987,8 +1088,21 @@ function buildEmptyState() {
   return card;
 }
 
+// Замер физически влияет на силуэт — акцентная левая граница строки (T20,
+// макет). Не про наличие svg_id: рост не рисует свою выноску, но задаёт
+// масштаб всей фигуры (figure.js: v.height делит все остальные размеры),
+// поэтому вместе с svg_id-замерами он тоже помечен. Единственные два
+// исключения — вес (не геометрический размер) и указательный палец
+// (не участвует в geom() вовсе, только собственная история).
+function affectsFigure(key) {
+  return key !== 'weight' && key !== 'finger_index';
+}
+
 function buildRow(entry, point, index, pending) {
-  const row = el('div', point ? 'mrow' : 'mrow mrow--missing');
+  const classes = ['mrow'];
+  if (!point) classes.push('mrow--missing');
+  if (affectsFigure(entry.key)) classes.push('mrow--affects');
+  const row = el('div', classes.join(' '));
   row.dataset.key = entry.key;
   row.setAttribute('role', 'button');
   row.setAttribute('tabindex', '0');
@@ -1129,7 +1243,7 @@ function paint() {
   const empty = measured === 0;
 
   const layout = el('div', 'figure-layout');
-  layout.append(buildFigureCard(state.measurements, slice, state.profile, empty));
+  layout.append(buildFigureCard(state.measurements, slice, state.profile, empty, state.showAllCallouts));
 
   const summary = el('div', 'figure-summary');
   summary.append(empty ? buildEmptyState() : buildKpis(slice));
@@ -1243,6 +1357,7 @@ export async function render(root, params) {
     sheetCtrl: null,
     detailCtrl: null,
     profile,
+    showAllCallouts: getShowAllCallouts(),
     pending: {},
     catalogReady: cachedCatalog.length > 0,
     error: null,

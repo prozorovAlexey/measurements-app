@@ -10,7 +10,8 @@ export const KEYS = {
   opens: 'bm.cheatsheet_opens', // { count, lastAt } — этап 1, после T15 не растёт
   opensV2: 'bm.opens', // T15 — { sizes: {count,lastAt}, app: {count,lastAt} }
   profile: 'bm.profile', // { sex: 'male' | 'female' }
-  theme: 'bm.theme' // 'light' | 'dark' — T17. Отсутствие ключа = системная тема.
+  theme: 'bm.theme', // 'light' | 'dark' — T17. Отсутствие ключа = системная тема.
+  showAllCallouts: 'bm.show_all_callouts' // 'true' | 'false' — T19. Отсутствие ключа = true.
 };
 
 const DEFAULT_REPO = Object.freeze({
@@ -247,4 +248,19 @@ export function setThemeOverride(value) {
   }
   writeRaw(KEYS.theme, value);
   return value;
+}
+
+// --- «Показывать все» на выносках силуэта (T19) ---------------------------
+// Отсутствие ключа = true (все 9 выносок — поведение до T19). Свитч под
+// силуэтом переключает только три второстепенные (таз/голень/стопа);
+// шесть основных видны всегда — см. CALLOUT_TIER в screens/figure.js.
+
+export function getShowAllCallouts() {
+  return readRaw(KEYS.showAllCallouts) !== 'false';
+}
+
+export function setShowAllCallouts(value) {
+  const next = value !== false;
+  writeRaw(KEYS.showAllCallouts, next ? 'true' : 'false');
+  return next;
 }
