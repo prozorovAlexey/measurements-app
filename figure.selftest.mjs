@@ -3,6 +3,7 @@
 //   C:\Users\user\AppData\Roaming\nvm\v24.4.0\node.exe figure.selftest.mjs
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { silhouette } from './figure.js';
@@ -75,6 +76,20 @@ function assertFiniteResult(result) {
   }
 }
 
+function mockupGeometrySignature(result) {
+  const mockupNodes = [
+    'shoulder', 'chest', 'waist', 'pelvis', 'glutes', 'neck',
+    'biceps', 'forearm', 'thigh', 'calf', 'foot'
+  ];
+  const nodes = Object.fromEntries(mockupNodes.map((key) => [key, {
+    y: result.nodes[key].y,
+    x1: result.nodes[key].x1,
+    x2: result.nodes[key].x2
+  }]));
+  const payload = JSON.stringify({ path: result.paths[0].d, nodes, ground: result.ground });
+  return createHash('sha256').update(payload).digest('hex');
+}
+
 console.log('Самопроверка T10: figure.js');
 
 await step('один вход всегда даёт один и тот же путь и не мутируется', () => {
@@ -86,6 +101,43 @@ await step('один вход всегда даёт один и тот же пу
   assertFiniteResult(first);
   assert.deepEqual(first.defaults, []);
   assert.ok(Object.values(first.nodes).every((node) => node.measured));
+});
+
+await step('SVG-контур и узлы побайтово соответствуют механике макета', () => {
+  const cases = [
+    {
+      figure: 'male',
+      values: {
+        height: 178, neck: 38, chest: 100.5, waist_who: 84, pelvis: 90,
+        hip: 98, thigh: 53, calf: 38, biceps_relaxed: 30.5, forearm: 28,
+        wrist: 20, shoulder_width: 43, foot_length: 27
+      },
+      signature: '84bf1f1d310da5e4cb064a823f3059fed32d370fea4a87f6682066077f4ca4d5'
+    },
+    {
+      figure: 'female',
+      values: {
+        height: 163, neck: 31, chest: 118, waist_who: 67, pelvis: 110,
+        hip: 126, thigh: 72, calf: 46, biceps_relaxed: 41, forearm: 33,
+        wrist: 14, shoulder_width: 39, foot_length: 23
+      },
+      signature: '899ee679031006a8db7053eca7ba18f3176f643d5f5b3ad627b4fb200203b13e'
+    },
+    {
+      figure: 'male',
+      values: {},
+      signature: '3d66cfd04af356a7828b998435345726faec4072f5c969777b6dd0a13edea634'
+    }
+  ];
+
+  for (const testCase of cases) {
+    const result = silhouette(testCase.values, { figure: testCase.figure });
+    assert.equal(mockupGeometrySignature(result), testCase.signature);
+  }
+
+  const callouts = silhouette(cases[0].values).nodes;
+  assert.ok(callouts.calf.x1 > 180, 'голень должна быть привязана справа, как в макете');
+  assert.ok(callouts.foot.x2 < 180, 'стопа должна быть привязана слева, как в макете');
 });
 
 await step('полуширина монотонно растёт вместе с обхватом', () => {
