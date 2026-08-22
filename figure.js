@@ -26,10 +26,6 @@ function clamp(value, min, max) {
   return value < min ? min : (value > max ? max : value);
 }
 
-function lerp(start, end, ratio) {
-  return start + (end - start) * ratio;
-}
-
 function smoothMaximum(left, right, softness) {
   return 0.5 * (
     left
@@ -39,22 +35,48 @@ function smoothMaximum(left, right, softness) {
 }
 
 function sample(keyframes, fraction) {
+  const count = keyframes.length;
   if (fraction <= keyframes[0][0]) return keyframes[0][1];
-  if (fraction >= keyframes[keyframes.length - 1][0]) {
-    return keyframes[keyframes.length - 1][1];
+  if (fraction >= keyframes[count - 1][0]) return keyframes[count - 1][1];
+
+  const slopes = [];
+  for (let index = 0; index < count - 1; index += 1) {
+    slopes.push(
+      (keyframes[index + 1][1] - keyframes[index][1])
+      / (keyframes[index + 1][0] - keyframes[index][0])
+    );
   }
 
-  for (let index = 1; index < keyframes.length; index += 1) {
-    const previous = keyframes[index - 1];
-    const current = keyframes[index];
-    if (fraction <= current[0]) {
-      const ratio = (fraction - previous[0]) / (current[0] - previous[0]);
-      const eased = ratio * ratio * (3 - 2 * ratio);
-      return previous[1] + (current[1] - previous[1]) * eased;
+  const tangents = new Array(count);
+  tangents[0] = slopes[0];
+  tangents[count - 1] = slopes[count - 2];
+  for (let index = 1; index < count - 1; index += 1) {
+    if (slopes[index - 1] * slopes[index] <= 0) {
+      tangents[index] = 0;
+    } else {
+      tangents[index] = (slopes[index - 1] + slopes[index]) / 2;
+      const limit = 3 * Math.min(Math.abs(slopes[index - 1]), Math.abs(slopes[index]));
+      tangents[index] = Math.sign(tangents[index]) * Math.min(
+        Math.abs(tangents[index]),
+        limit
+      );
     }
   }
 
-  return keyframes[keyframes.length - 1][1];
+  let interval = 0;
+  while (interval < count - 2 && fraction > keyframes[interval + 1][0]) {
+    interval += 1;
+  }
+  const start = keyframes[interval];
+  const end = keyframes[interval + 1];
+  const span = end[0] - start[0];
+  const ratio = (fraction - start[0]) / span;
+  const ratio2 = ratio * ratio;
+  const ratio3 = ratio2 * ratio;
+  return (2 * ratio3 - 3 * ratio2 + 1) * start[1]
+    + (ratio3 - 2 * ratio2 + ratio) * span * tangents[interval]
+    + (-2 * ratio3 + 3 * ratio2) * end[1]
+    + (ratio3 - ratio2) * span * tangents[interval + 1];
 }
 
 function coordinate(value) {
@@ -125,18 +147,11 @@ function prepareValues(values) {
 function geometry(values, measured, figure) {
   const height = values.height;
   const pixelsPerCentimeter = BODY_HEIGHT / height;
-  const reference = values;
-  const gain = 1;
   const female = figure === 'female';
   const y = (fraction) => BODY_TOP + BODY_HEIGHT * fraction;
-  // Hook reference/gain сохранён из модели шаблона. При gain = 1 результат зависит
-  // только от текущего среза и остаётся детерминированным.
-  const amplified = (key) => (
-    reference[key] + (values[key] - reference[key]) * gain
-  );
   // Обхват (см) -> полуширина спереди (px) с анатомическим клампом.
   const halfWidth = (key, coefficient, min, max) => clamp(
-    amplified(key) / TAU * coefficient * pixelsPerCentimeter,
+    values[key] / TAU * coefficient * pixelsPerCentimeter,
     min * BODY_HEIGHT,
     max * BODY_HEIGHT
   );
@@ -154,13 +169,13 @@ function geometry(values, measured, figure) {
   const shoulder = Math.max(
     chest * 1.10,
     clamp(
-      amplified('shoulder_width') / 2 * pixelsPerCentimeter * (female ? 0.95 : 1),
+      values.shoulder_width / 2 * pixelsPerCentimeter * (female ? 0.95 : 1),
       0.095 * BODY_HEIGHT,
       0.16 * BODY_HEIGHT
     )
   );
   const footWidth = clamp(
-    amplified('foot_length') * pixelsPerCentimeter * 0.20,
+    values.foot_length * pixelsPerCentimeter * 0.20,
     0.021 * BODY_HEIGHT,
     0.036 * BODY_HEIGHT
   );
@@ -172,26 +187,20 @@ function geometry(values, measured, figure) {
   const thighAxis = Math.max(glutes * 0.985 - thighWidth, thigh * 0.5);
   const kneeAxis = Math.max(thighAxis * 1.04, calf * 1.05 + BODY_HEIGHT * 0.008);
   const ankleAxis = kneeAxis * 0.94;
-  const legAxis = (fraction) => {
-    if (fraction <= 0.545) return thighAxis;
-    if (fraction <= 0.715) {
-      return lerp(thighAxis, kneeAxis, (fraction - 0.545) / 0.17);
-    }
-    return lerp(
-      kneeAxis,
-      ankleAxis,
-      clamp((fraction - 0.715) / 0.227, 0, 1)
-    );
-  };
+  const legAxes = [
+    [0.508, thighAxis], [0.545, thighAxis], [0.715, kneeAxis], [0.942, ankleAxis]
+  ];
+  const legAxis = (fraction) => sample(legAxes, fraction);
+  const hipJoin = Math.max(thighWidth, glutes * 0.985 - thighAxis);
   const legWidths = [
-    [0.508, thighWidth * 0.99], [0.545, thighWidth], [0.60, thigh * 0.96],
-    [0.655, thigh * 0.85], [0.715, calf * 0.93], [0.755, calf],
-    [0.79, calf * 1.02], [0.84, calf * 0.83], [0.90, calf * 0.58],
+    [0.508, hipJoin], [0.56, thighWidth], [0.655, thigh * 0.85],
+    [0.715, calf * 0.93], [0.775, calf * 1.02], [0.84, calf * 0.83],
+    [0.90, calf * 0.58],
     [0.942, calf * 0.45]
   ];
   const legGaps = [
-    [0.512, 1.0], [0.55, 4.0], [0.60, 7.0], [0.65, 9.0],
-    [0.715, 10.0], [0.79, 8.0], [0.87, 9.0], [0.942, 11.0]
+    [0.512, 1], [0.60, 7], [0.715, 10], [0.79, 10.5],
+    [0.87, 11], [0.942, 12]
   ];
   const legOuter = (fraction) => legAxis(fraction) + sample(legWidths, fraction);
   const legInner = (fraction) => smoothMaximum(
@@ -200,13 +209,9 @@ function geometry(values, measured, figure) {
     18
   );
 
-  // Живот между талией и тазом растёт, но не выше таза — иначе профиль
-  // ловит волну (вверх-вниз-вверх) на сочетаниях, где таз близок к талии.
-  const bellyBulge = clamp(waist * 1.10, waist, Math.max(waist, pelvis));
   const torsoSides = [
-    [0.219, chest * 0.86], [0.252, chest * 0.97], [0.278, chest],
-    [0.315, chest * 0.945], [0.352, waist * 1.09], [0.392, waist],
-    [0.425, bellyBulge], [0.448, pelvis], [0.478, glutes],
+    [0.219, chest * 0.895], [0.278, chest], [0.392, waist],
+    [0.448, pelvis], [0.478, glutes],
     [0.508, glutes * 0.985]
   ];
   const sideAt = (fraction) => (
@@ -214,7 +219,7 @@ function geometry(values, measured, figure) {
   );
 
   // Внешний контур руки несёт замер, внутренний держит зазор от корпуса.
-  const palm = wrist * 1.36;
+  const palm = wrist * 1.28;
   const elbow = (biceps + forearm) / 2 * 0.86;
   const shoulderAxis = shoulder - biceps * 1.06;
   const handAxis = Math.max(
@@ -289,8 +294,8 @@ function geometry(values, measured, figure) {
   add(armOuter(0.43), 0.43);
   add(armOuter(0.472), 0.472);
   add(armOuter(0.492), 0.492);
-  add(handAxis + palm * 0.88, 0.516);
-  add(handAxis + palm, 0.546);
+  add(handAxis + palm * 0.82, 0.512, 0.85);
+  add(handAxis + palm, 0.548);
   add(handAxis + palm * 0.90, 0.572, 0.8);
   add(handAxis + palm * 0.54, 0.5885, 0.6);
   add(handAxis - palm * 0.34, 0.592, 0.6);
@@ -304,38 +309,34 @@ function geometry(values, measured, figure) {
   add(armInner(0.33), 0.33);
   add(armInner(0.29), 0.29);
   add(armInner(0.262), 0.262, 0.6);
-  add(sideAt(0.256) + 1.4, 0.252, 0.5);
-  add(sideAt(0.278), 0.278);
-  add(sideAt(0.315), 0.315);
-  add(sideAt(0.352), 0.352);
+  add(sideAt(0.256) + 1.2, 0.252, 0.5);
+  add(sideAt(0.288), 0.288);
+  add(sideAt(0.34), 0.34);
   add(sideAt(0.392), 0.392);
-  add(sideAt(0.425), 0.425);
   add(sideAt(0.448), 0.448);
   add(sideAt(0.478), 0.478);
   add(legOuter(0.508), 0.508);
   add(legOuter(0.545), 0.545);
-  add(legOuter(0.60), 0.60);
   add(legOuter(0.655), 0.655);
   add(legOuter(0.715), 0.715);
   add(legOuter(0.775), 0.775);
   add(legOuter(0.84), 0.84);
   add(legOuter(0.90), 0.90);
   add(legOuter(0.925), 0.925);
-  add(ankleAxis + calf * 0.42, 0.952);
-  add(ankleAxis + footWidth * 0.78, 0.980);
-  add(ankleAxis + footWidth, 0.9975, 0.6);
-  add(ankleAxis + footWidth * 0.74, 1, 0.5);
-  add(ankleAxis - footWidth * 0.56, 1, 0.5);
-  add(ankleAxis - footWidth * 0.70, 0.9905, 0.55);
-  add(ankleAxis - footWidth * 0.28, 0.970, 0.9);
-  add(ankleAxis - calf * 0.38, 0.952);
+  add(ankleAxis + calf * 0.42, 0.950);
+  add(ankleAxis + footWidth * 0.72, 0.978);
+  add(ankleAxis + footWidth, 0.9975, 0.65);
+  add(ankleAxis + footWidth * 0.72, 1, 0.5);
+  add(ankleAxis - footWidth * 0.54, 1, 0.5);
+  add(ankleAxis - footWidth * 0.66, 0.9895, 0.6);
+  add(ankleAxis - footWidth * 0.40, 0.972, 0.85);
+  add(ankleAxis - calf * 0.36, 0.950);
   add(legInner(0.925), 0.928);
   add(legInner(0.90), 0.90);
   add(legInner(0.84), 0.84);
-  add(legInner(0.79), 0.79);
+  add(legInner(0.775), 0.775);
   add(legInner(0.715), 0.715);
-  add(legInner(0.655), 0.655);
-  add(legInner(0.60), 0.60);
+  add(legInner(0.63), 0.63);
   add(legInner(0.545), 0.545);
   add(legInner(0.525), 0.525, 0.9);
   add(0, 0.512);
@@ -375,8 +376,8 @@ function geometry(values, measured, figure) {
       glutes: torsoNode('hip', 0.478, glutes),
       biceps: rightLimbNode('biceps_relaxed', 0.345, armInner(0.345), armOuter(0.345)),
       thigh: leftLimbNode('thigh', 0.575, legInner(0.575), legOuter(0.575)),
-      calf: leftLimbNode('calf', 0.79, legInner(0.79), legOuter(0.79)),
-      foot: rightLimbNode(
+      calf: rightLimbNode('calf', 0.79, legInner(0.79), legOuter(0.79)),
+      foot: leftLimbNode(
         'foot_length',
         0.988,
         ankleAxis - footWidth * 0.70,
