@@ -23,6 +23,7 @@ const TONES = ['ok', 'stale', 'error'];
 const appEl = document.getElementById('app');
 const shellEl = document.getElementById('app-shell');
 const titleEl = document.getElementById('screen-title');
+const subtitleEl = document.getElementById('screen-subtitle');
 const statusEl = document.getElementById('header-status');
 const toastHost = document.getElementById('toast-host');
 const themeToggleEl = document.getElementById('theme-toggle');
@@ -79,6 +80,22 @@ function markActiveTab(name) {
 function markLayout(name) {
   if (!shellEl) return;
   shellEl.classList.toggle('app-shell--figure', name === 'figure' || name === 'compare');
+}
+
+const SCREEN_SUBTITLES = {
+  figure: 'Текущие значения',
+  compare: 'Сопоставление срезов',
+  sizes: 'Расчёты по вашим замерам',
+  entry: 'Новая полная сессия',
+  history: 'Динамика показателя',
+  settings: 'Синхронизация и параметры'
+};
+
+export function setHeaderSubtitle(text) {
+  if (!subtitleEl) return;
+  const value = typeof text === 'string' ? text.trim() : '';
+  subtitleEl.textContent = value;
+  subtitleEl.hidden = value === '';
 }
 
 // --- Тема (T17) ------------------------------------------------------------
@@ -218,6 +235,7 @@ async function mount(route) {
   if (token !== mountToken) return;
 
   if (titleEl) titleEl.textContent = typeof mod.title === 'string' && mod.title ? mod.title : 'Замеры';
+  setHeaderSubtitle(SCREEN_SUBTITLES[route.name] ?? 'Личный трекер замеров');
   currentModule = mod;
 
   try {

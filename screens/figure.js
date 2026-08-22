@@ -2,7 +2,7 @@
 // Срез и окраска Δ приходят только из asof.js; экран не знает про файлы
 // сессий и пишет быстрый ввод только через очередь.
 
-import { setHeaderStatus, toast } from '../app.js';
+import { setHeaderStatus, setHeaderSubtitle, toast } from '../app.js';
 import { delta, sliceAt, sliceDates } from '../asof.js';
 import { figureMeasurements, getMeasurement, loadCachedCatalog, loadCatalog, protocolVersion } from '../catalog.js';
 import { silhouette } from '../figure.js';
@@ -503,7 +503,7 @@ export function figureSubtabs(active = 'figure') {
 
   // '#/' — стартовый маршрут «Фигуры» (§2 контракта), не '#/figure':
   // отдельного роута под фигуру в таблице §2 нет.
-  const figure = el('a', 'subtabs__item', 'Фигура');
+  const figure = el('a', 'subtabs__item', 'Текущие');
   figure.href = '#/';
   if (active === 'figure') {
     figure.classList.add('subtabs__item--active');
@@ -795,6 +795,27 @@ function buildKpi(label, value, unit, sub, tone, status) {
   return card;
 }
 
+function daysBefore(value, days) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''))) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function weightKpiSub(weight) {
+  if (!weight || !state?.selectedDate) return 'не измерено';
+  const previousDate = daysBefore(state.selectedDate, 30);
+  const previous = previousDate
+    ? weightPointsForYear(state.index, state.pending, state.selectedDate)
+      .find((point) => point.date >= previousDate && point.date < weight.date)
+    : null;
+  const change = delta(previous, weight, getMeasurement('weight'));
+  if (!Number.isFinite(change.value) || previous?.date === weight.date) return formatDate(weight.date);
+  const sign = change.value > 0 ? '+' : change.value < 0 ? '−' : '';
+  return `${sign}${formatMeasurement(Math.abs(change.value), 'kg')} за 30 дней`;
+}
+
 function buildKpis(slice) {
   const weight = pointOf(slice, 'weight');
   const height = pointOf(slice, 'height');
@@ -815,7 +836,7 @@ function buildKpis(slice) {
       'Вес',
       weight ? formatNumber(weight.value) : '—',
       'кг',
-      weight ? formatDate(weight.date) : 'не измерено',
+      weightKpiSub(weight),
       'weight'
     ),
     buildKpi(
@@ -1158,21 +1179,27 @@ function buildRow(entry, point, index, pending) {
   return row;
 }
 
-function buildGroups(measurements, slice, index, pending) {
+function buildGroups(measurements, slice, index, pending, selectedDate) {
   const byKey = new Map(measurements.map((entry) => [entry.key, entry]));
-  const fragment = [];
+  const card = el('section', 'measurements-card card');
+  const head = el('header', 'measurements-card__head');
+  head.append(
+    el('h2', 'measurements-card__title', 'Измерения'),
+    el('span', 'measurements-card__date', selectedDate ? formatDate(selectedDate) : 'нет данных')
+  );
+  card.append(head);
 
   for (const group of GROUPS) {
-    const section = el('section', 'mgroup card');
-    section.append(el('h2', null, group.title));
+    const section = el('section', 'mgroup');
+    section.append(el('h3', null, group.title));
     for (const key of group.keys) {
       const entry = byKey.get(key);
       if (entry) section.append(buildRow(entry, pointOf(slice, key), index, pending));
     }
-    fragment.push(section);
+    card.append(section);
   }
 
-  return fragment;
+  return card;
 }
 
 function buildActions(loading) {
@@ -1215,7 +1242,9 @@ function applyStatus() {
 
 function paint() {
   if (state === null) return;
-  const nodes = [figureSubtabs('figure')];
+  const controls = el('div', 'figure-controls');
+  controls.append(figureSubtabs('figure'));
+  const nodes = [controls];
   if (state.error) nodes.push(buildNotice(state.error));
 
   if (!state.catalogReady) {
@@ -1246,8 +1275,9 @@ function paint() {
   const dates = sliceDates(state.index, pending);
   if (!dates.includes(state.selectedDate)) state.selectedDate = dates.at(-1) ?? null;
   if (dates.length > 0) {
-    nodes.push(buildDateStrip(dates, state.selectedDate, new Set(Object.keys(pending))));
+    controls.append(buildDateStrip(dates, state.selectedDate, new Set(Object.keys(pending))));
   }
+  setHeaderSubtitle(state.selectedDate ? `Замер ${formatDate(state.selectedDate)}` : 'Текущие значения');
 
   const slice = state.selectedDate ? sliceAt(state.index, state.selectedDate, pending) : {};
   state.slice = slice;
@@ -1259,7 +1289,7 @@ function paint() {
 
   const summary = el('div', 'figure-summary');
   summary.append(empty ? buildEmptyState() : buildKpis(slice));
-  summary.append(...buildGroups(state.measurements, slice, state.index, pending));
+  summary.append(buildGroups(state.measurements, slice, state.index, pending, state.selectedDate));
   summary.append(buildActions(state.loading));
   layout.append(summary);
   nodes.push(layout);

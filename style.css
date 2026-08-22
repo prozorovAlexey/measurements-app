@@ -57,6 +57,7 @@
   --radius: 0.75rem;
   --r-card: 9px;
   --sh-card: 0 2px 6px rgb(0 0 0 / 5%);
+  --content-max: 70rem;
 
   /* Минимальная тач-цель — 44px. */
   --tap: 2.75rem;
@@ -155,20 +156,31 @@ body {
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: var(--fs-body);
   line-height: 1.45;
 }
 
 .app-shell {
   width: 100%;
-  max-width: 34rem;
   min-height: 100vh;
   min-height: 100dvh;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+}
+
+.app-shell--figure {
+  --content-max: 93rem;
+}
+
+.app-frame {
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
 }
 
 :where(a, button, input, select, textarea, [role='button']):focus-visible {
@@ -202,14 +214,60 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.appbar__title {
+.appbar__titles {
+  min-width: 0;
   flex: 1 1 auto;
+}
+
+.appbar__title {
   margin: 0;
   font-size: 1.0625rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.appbar__subtitle {
+  margin: 0.1rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appbar__actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--gap) / 1.5);
+}
+
+.appbar__primary {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--ac);
+  color: #fff;
+  border: 1px solid var(--ac);
+  border-radius: var(--r-card);
+  box-shadow: 0 2px 5px rgb(16 115 175 / 28%);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.appbar__primary svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 /* Переключатель темы (T17) — свитч в шапке, виден на любом экране.
@@ -257,6 +315,9 @@ body {
 /* Экран */
 
 .screen {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -424,10 +485,14 @@ body {
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabbar__brand {
+  display: none;
 }
 
 .tabbar__item {
@@ -460,6 +525,134 @@ body {
 .tabbar__label {
   font-size: var(--fs-small);
   line-height: 1.1;
+}
+
+@media (max-width: 29.99rem) {
+  .appbar__primary {
+    width: 2.5rem;
+    padding-inline: 0;
+  }
+
+  .appbar__primary span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .status {
+    max-width: 6.5rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 6.625rem minmax(0, 1fr);
+  }
+
+  .app-frame {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .appbar {
+    min-height: 5.25rem;
+    padding: 0.875rem 1.5rem;
+    padding-top: max(0.875rem, env(safe-area-inset-top));
+  }
+
+  .appbar__title {
+    font-size: 1.5rem;
+    line-height: 1.15;
+  }
+
+  .appbar__subtitle {
+    margin-top: 0.2rem;
+    font-size: 0.875rem;
+  }
+
+  .appbar__actions {
+    gap: 0.75rem;
+  }
+
+  .appbar__primary {
+    min-height: var(--tap);
+    padding-inline: 0.875rem;
+    font-size: 0.875rem;
+  }
+
+  .status--ok {
+    display: none;
+  }
+
+  .screen {
+    padding: 1.125rem 1.5rem 2rem;
+  }
+
+  .tabbar {
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    grid-column: 1;
+    grid-row: 1;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    background: var(--surface);
+    border-top: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .tabbar__brand {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 1.375rem auto 1.25rem;
+    background: var(--ac);
+    color: #fff;
+    border-radius: 0.75rem;
+  }
+
+  .tabbar__brand svg {
+    width: 1.45rem;
+    height: 1.45rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .tabbar__item {
+    min-height: 4.625rem;
+    gap: 0.3rem;
+    padding: 0.65rem 0.25rem;
+  }
+
+  .tabbar__icon {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .tabbar__label {
+    font-size: 0.75rem;
+  }
+
+  .toast-host {
+    left: 6.625rem;
+    bottom: 1.5rem;
+  }
 }
 
 /* Тосты — короткие уведомления над таббаром. Тёмная плашка всегда (стиль
@@ -1719,6 +1912,18 @@ body {
   min-width: 0;
 }
 
+.figure-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.figure-controls {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 2);
+}
+
 .subtabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1799,6 +2004,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+}
+
+.figure-layout {
+  width: 100%;
+  max-width: 93rem;
+  margin-inline: auto;
 }
 
 .fig-card {
@@ -2419,11 +2630,55 @@ body {
   margin: 0 0 var(--gap);
 }
 
-.mgroup h2 {
+.measurements-card {
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--sh-card);
+}
+
+.measurements-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 1rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.measurements-card__head .measurements-card__title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 0.9375rem;
+}
+
+.measurements-card__date {
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mgroup {
+  padding: 0.75rem 0 0;
+}
+
+.mgroup + .mgroup {
+  border-top: 1px solid var(--border-soft);
+}
+
+.mgroup h3 {
+  margin: 0;
+  padding: 0 1rem 0.35rem;
   color: var(--text-label);
   font-size: var(--fs-small);
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.measurements-card .mrow {
+  padding-right: 1rem;
+  padding-left: 0.75rem;
 }
 
 .sizes-measurements {
@@ -2581,10 +2836,6 @@ body {
 }
 
 @media (min-width: 56rem) {
-  .app-shell--figure {
-    max-width: 70rem;
-  }
-
   .figure-layout {
     display: grid;
     grid-template-columns: minmax(22rem, 0.92fr) minmax(25rem, 1.08fr);
@@ -2594,6 +2845,58 @@ body {
   .fig-card {
     position: sticky;
     top: calc(var(--tap) + var(--gap));
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-shell--figure .screen.figure-screen {
+    max-width: none;
+    padding-top: 0;
+  }
+
+  .figure-controls {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0 0 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 0 0 100vmax var(--surface);
+    clip-path: inset(0 -100vmax);
+  }
+
+  .figure-controls .subtabs {
+    flex: 0 0 14.5rem;
+  }
+
+  .figure-controls .fig-dates {
+    flex: 1 1 auto;
+    padding-bottom: 0;
+  }
+
+  .figure-layout {
+    gap: 1rem;
+    grid-template-columns: minmax(22rem, 0.82fr) minmax(25rem, 1.18fr);
+  }
+
+  .figure-summary {
+    gap: 1rem;
+  }
+
+  .fig-card {
+    top: 6.375rem;
+  }
+
+  .measurements-card .mrow {
+    min-height: 3.55rem;
+  }
+
+  .app-shell--figure .fig-actions .btn--primary {
+    display: none;
+  }
+
+  .app-shell--figure .fig-actions .btn {
+    flex: 0 0 auto;
   }
 }
 

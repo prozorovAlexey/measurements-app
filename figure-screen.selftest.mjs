@@ -375,8 +375,10 @@ await step('lifecycle: после ошибки каталога online повт�
 
 await step('T12 DOM: список содержит ровно 15 строк в четырёх группах', async () => {
   const root = await renderScreen(FULL_INDEX);
+  assert.equal(byClass(root, 'measurements-card').length, 1, 'четыре группы собраны в одну карточку макета');
   assert.equal(byClass(root, 'mgroup').length, 4);
   assert.equal(byClass(root, 'mrow').length, 15);
+  assert.equal(firstByClass(byClass(root, 'kpi--weight')[0], 'kpi__sub').textContent, '−0,3 кг за 30 дней');
   assert.deepEqual(
     byClass(root, 'mrow').map((row) => row.dataset.key),
     [
@@ -502,16 +504,23 @@ await step('T12 DOM: пустой индекс показывает empty-state,
   assert.equal(byClass(root, 'fig-dates').length, 0);
 });
 
-await step('T15: «#/» — «Фигура» по умолчанию, таббар трёхвкладочный', () => {
+await step('T27: «#/» — «Фигура» по умолчанию, таббар продолжает desktop-макет', () => {
   const app = readFileSync(new URL('./app.js', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
   assert.match(app, /parts\.length === 0[^\n]+name: 'figure'/);
   assert.doesNotMatch(app, /name: 'cheatsheet'/, 'шпаргалка удалена вместе с T15');
   assert.match(html, /href="#\/"\s+data-tab="figure"/);
   assert.match(html, /href="#\/sizes"\s+data-tab="sizes"/);
-  assert.doesNotMatch(html, /data-tab="cheatsheet"|data-tab="entry"|data-tab="history"/, 'в таббаре T15 остаются только Фигура, Размеры, Настройки');
+  assert.match(html, /href="#\/history\/weight"\s+data-tab="history"/);
+  assert.doesNotMatch(html, /data-tab="cheatsheet"|data-tab="entry"/, 'быстрый ввод остаётся действием шапки, не отдельной вкладкой');
+  assert.match(html, /class="appbar__primary"\s+href="#\/entry"/);
+  assert.match(css, /\.tabbar\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*1fr\)/);
+  assert.match(css, /grid-template-columns:\s*6\.625rem\s+minmax\(0,\s*1fr\)/);
+  assert.match(css, /--content-max:\s*93rem/);
   const subtabs = figureScreen.figureSubtabs('figure');
   assert.equal(subtabs.children.length, 2);
+  assert.equal(subtabs.children[0].textContent, 'Текущие');
   assert.equal(subtabs.children[0].href, '#/');
   assert.ok(subtabs.children[0].classList.contains('subtabs__item--active'));
   assert.equal(subtabs.children[1].href, '#/compare');
@@ -532,13 +541,15 @@ await step('сторож: экран read-only и окрашивает Δ тол
   // запись идёт только через enqueueEntry() из queue.js (T14, склейка дня).
   assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/);
   assert.match(source, /import \{ delta, sliceAt, sliceDates \} from '\.\.\/asof\.js'/);
-  assert.equal((source.match(/\bdelta\s*\(/g) ?? []).length, 1, 'ровно один вызов asof.delta()');
+  assert.equal((source.match(/\bdelta\s*\(/g) ?? []).length, 2, 'строки и KPI веса используют asof.delta()');
   assert.equal((source.match(/change\.tone/g) ?? []).length, 1, 'тон класса берётся из delta().tone');
   assert.doesNotMatch(source, /\btone\s*:/, 'экран не конструирует tone вручную');
   const changeFor = /function changeFor\([^)]*\) \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
   assert.match(changeFor, /const previous = before \?[^;]+: null;/);
   assert.match(changeFor, /return delta\(previous, current, entry\);/);
   assert.doesNotMatch(changeFor, /return\s*\{/);
+  const weightKpiSub = /function weightKpiSub\([^)]*\) \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
+  assert.match(weightKpiSub, /const change = delta\(previous, weight, getMeasurement\('weight'\)\);/);
 
   const renderBlock = source.slice(
     source.indexOf('export async function render'),

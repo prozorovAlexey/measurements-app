@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Замеры</title>
   <meta name="description" content="Личный трекер замеров тела: последние значения, ввод сессии, история.">
-  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15181b" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./style.css">
@@ -24,17 +24,12 @@
 </head>
 <body>
   <div class="app-shell" id="app-shell">
-    <header class="appbar">
-      <h1 class="appbar__title" id="screen-title">Замеры</h1>
-      <span class="status" id="header-status" role="status" aria-live="polite" hidden></span>
-      <button type="button" class="theme-toggle" id="theme-toggle" role="switch" aria-checked="false" aria-label="Тёмная тема">
-        <span class="theme-toggle__knob"></span>
-      </button>
-    </header>
-
-    <main id="app" class="screen"></main>
-
     <nav class="tabbar" aria-label="Основная навигация">
+      <a class="tabbar__brand" href="#/" aria-label="Замеры — на главную">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5M4 4l6 6M20 4l-6 6M4 20l6-6M20 20l-6-6"></path>
+        </svg>
+      </a>
       <a class="tabbar__item" href="#/" data-tab="figure">
         <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <circle cx="12" cy="5.5" r="2.5"></circle>
@@ -49,6 +44,16 @@
         </svg>
         <span class="tabbar__label">Размеры</span>
       </a>
+      <a class="tabbar__item" href="#/history/weight" data-tab="history">
+        <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 17l4.5-4.5 3 2.5L18 8.5"></path>
+          <circle cx="4" cy="17" r="1"></circle>
+          <circle cx="8.5" cy="12.5" r="1"></circle>
+          <circle cx="11.5" cy="15" r="1"></circle>
+          <circle cx="18" cy="8.5" r="1"></circle>
+        </svg>
+        <span class="tabbar__label">История</span>
+      </a>
       <a class="tabbar__item" href="#/settings" data-tab="settings">
         <svg class="tabbar__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M4 8h9M17.5 8H20M4 16h3.5M12 16h8"></path>
@@ -58,6 +63,30 @@
         <span class="tabbar__label">Настройки</span>
       </a>
     </nav>
+
+    <div class="app-frame">
+      <header class="appbar">
+        <div class="appbar__titles">
+          <h1 class="appbar__title" id="screen-title">Замеры</h1>
+          <p class="appbar__subtitle" id="screen-subtitle">Личный трекер замеров</p>
+        </div>
+        <div class="appbar__actions">
+          <span class="status" id="header-status" role="status" aria-live="polite" hidden></span>
+          <a class="appbar__primary" href="#/entry">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="8.5"></circle>
+              <path d="M12 8v8M8 12h8"></path>
+            </svg>
+            <span>Добавить измерение</span>
+          </a>
+          <button type="button" class="theme-toggle" id="theme-toggle" role="switch" aria-checked="false" aria-label="Тёмная тема">
+            <span class="theme-toggle__knob"></span>
+          </button>
+        </div>
+      </header>
+
+      <main id="app" class="screen"></main>
+    </div>
   </div>
 
   <div class="toast-host" id="toast-host" aria-live="polite" aria-atomic="true"></div>
