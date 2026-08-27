@@ -1,7 +1,7 @@
 // Bootstrap + hash-роутер + монтирование экранов (§2 контракта).
 // Экраны грузятся динамическим import() — каркас не тянет их код заранее.
 
-import { bumpOpens, getThemeOverride, setThemeOverride } from './store.js';
+import { bumpOpens, getActiveAccount, getThemeOverride, setThemeOverride } from './store.js';
 import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
@@ -10,7 +10,8 @@ const SCREENS = {
   sizes: () => import('./screens/sizes.js'),
   entry: () => import('./screens/entry.js'),
   history: () => import('./screens/history.js'),
-  settings: () => import('./screens/settings.js')
+  settings: () => import('./screens/settings.js'),
+  login: () => import('./screens/login.js')
 };
 
 // T16: «Сравнение» — вторая под-вкладка «Фигуры» (§2 контракта), своей
@@ -59,6 +60,7 @@ function resolveRoute(hash) {
   if (parts.length === 1 && parts[0] === 'sizes') return { name: 'sizes', params: {} };
   if (parts.length === 1 && parts[0] === 'entry') return { name: 'entry', params: {} };
   if (parts.length === 1 && parts[0] === 'settings') return { name: 'settings', params: {} };
+  if (parts.length === 1 && parts[0] === 'login') return { name: 'login', params: {} };
   if (parts.length === 2 && parts[0] === 'history') return { name: 'history', params: { key: parts[1] } };
   return null;
 }
@@ -88,7 +90,8 @@ const SCREEN_SUBTITLES = {
   sizes: 'Расчёты по вашим замерам',
   entry: 'Новая полная сессия',
   history: 'Динамика показателя',
-  settings: 'Синхронизация и параметры'
+  settings: 'Синхронизация и параметры',
+  login: 'Вход'
 };
 
 export function setHeaderSubtitle(text) {
@@ -259,6 +262,19 @@ function router() {
   const route = resolveRoute(location.hash);
   if (!route) {
     // Неизвестный хэш — дефолтный экран шпаргалки.
+    navigate('#/');
+    return;
+  }
+  // Гейт входа (T31, §17 контракта): без активного профиля доступен только
+  // сам экран входа; с активным профилем экран входа недоступен — например,
+  // кнопка «Назад» браузера или старая закладка не должны вернуть уже
+  // вошедшего человека на форму логина.
+  const account = getActiveAccount();
+  if (!account && route.name !== 'login') {
+    navigate('#/login');
+    return;
+  }
+  if (account && route.name === 'login') {
     navigate('#/');
     return;
   }
