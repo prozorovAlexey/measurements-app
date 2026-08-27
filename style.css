@@ -3365,13 +3365,38 @@ body {
 
 .login-screen {
   min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+}
+
+.login-card {
   display: grid;
   gap: var(--gap);
+  width: 100%;
+  max-width: 26rem;
+}
+
+.login-heading {
+  margin: 0;
+  font-size: 1.1875rem;
+}
+
+.login-create-host {
+  width: 100%;
+  max-width: 26rem;
 }
 
 .login-messages {
   display: grid;
   gap: calc(var(--gap) / 2);
+}
+
+.login-messages:empty {
+  display: none;
 }
 
 .login-create {

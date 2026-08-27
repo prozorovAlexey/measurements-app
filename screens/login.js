@@ -195,6 +195,8 @@ function paint() {
 
   const card = el('section', 'card login-card');
 
+  card.append(el('h2', 'login-heading', 'Вход'));
+
   const loginInput = makeInput('text', state.login, (value) => {
     state.login = value;
   });
