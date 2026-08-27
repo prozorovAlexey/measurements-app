@@ -29,7 +29,7 @@ const store = await import('./store.js');
 const {
   LOGIN_PATTERN, MIN_PASSWORD_LENGTH,
   validateLogin, validatePassword,
-  parseRegistry, findAccount, upsertAccount,
+  parseRegistry, findAccount, upsertAccount, removeAccount,
   hashPassword, verifyPassword,
   accountDataDir, accountIndexPath, accountProfilePath
 } = accounts;
@@ -218,6 +218,40 @@ await step('upsertAccount: существующий id — замена без �
   assert.equal(REGISTRY.accounts.length, 2, 'исходный реестр вырос');
   assert.deepEqual(REGISTRY.accounts.find((item) => item.id === 'alex'), before.accounts.find((item) => item.id === 'alex'),
     'исходная запись alex подменилась на месте');
+});
+
+// ===== removeAccount (T34) ===================================================
+
+await step('removeAccount: убирает запись по id, вход не мутируется', () => {
+  const before = JSON.parse(JSON.stringify(REGISTRY));
+  const next = removeAccount(REGISTRY, 'alex');
+
+  assert.equal(next.accounts.length, 1);
+  assert.equal(next.accounts.some((item) => item.id === 'alex'), false);
+  assert.deepEqual(next.accounts[0], REGISTRY.accounts[0]);
+  assert.equal(REGISTRY.accounts.length, 2, 'исходный реестр вырос');
+  assert.deepEqual(REGISTRY, before, 'исходный реестр изменился');
+});
+
+await step('removeAccount: неизвестный id — состав не меняется, но объект новый', () => {
+  const next = removeAccount(REGISTRY, 'unknown');
+  assert.equal(next.accounts.length, 2);
+  assert.notEqual(next, REGISTRY, 'вернулся тот же объект реестра, а не копия');
+  assert.deepEqual(next.accounts, REGISTRY.accounts);
+});
+
+await step('removeAccount: version сохраняется, дефолт 1 для отсутствующей/некорректной', () => {
+  assert.equal(removeAccount({ version: 3, accounts: [] }, 'x').version, 3);
+  assert.equal(removeAccount({ accounts: [] }, 'x').version, 1);
+  assert.equal(removeAccount({ version: 0, accounts: [] }, 'x').version, 1);
+});
+
+await step('removeAccount: мусор на входе не роняет функцию, всегда {version, accounts}', () => {
+  for (const garbage of [null, undefined, 42, 'строка', [], true]) {
+    const result = removeAccount(garbage, 'alex');
+    assert.deepEqual(Object.keys(result).sort(), ['accounts', 'version']);
+    assert.ok(Array.isArray(result.accounts), `garbage=${JSON.stringify(garbage)}`);
+  }
 });
 
 // ===== hashPassword / verifyPassword ========================================

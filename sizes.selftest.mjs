@@ -428,6 +428,10 @@ globalThis.fetch = async (url) => {
 const sizesScreen = await import('./screens/sizes.js');
 const store = await import('./store.js');
 
+// T32: кэш index.json/профиль — per-account, экрану нужен активный профиль
+// в localStorage, иначе getActiveAccount() пуст и кэш читается/пишется в никуда.
+const ACCOUNT = 'alex';
+
 async function flush() {
   for (let i = 0; i < 3; i += 1) {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
@@ -437,7 +441,8 @@ async function flush() {
 function seedStorage(index) {
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({ data: index, fetchedAt: '2026-08-19T12:00:00Z' }));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, index);
   storage.set(store.KEYS.catalog, JSON.stringify({ data: CATALOG_RAW, fetchedAt: '2026-08-19T12:00:00Z' }));
   githubReply = index;
 }

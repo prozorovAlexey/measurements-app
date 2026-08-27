@@ -225,7 +225,8 @@ async function renderScreen(series = FULL_SERIES) {
   // монтирования экрана активный профиль уже есть — сеем его так же, как токен.
   storage.set(store.KEYS.activeAccount, ACCOUNT);
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({ data: indexReply, fetchedAt: new Date().toISOString() }));
+  // T32: кэш index.json — per-account (bm.<id>.index_cache), не общий bm.index_cache.
+  store.setAccountIndexCache(ACCOUNT, indexReply);
   storage.set(store.KEYS.catalog, JSON.stringify({ data: CATALOG_RAW, fetchedAt: new Date().toISOString() }));
   const root = createElement('main');
   root.className = 'screen';
@@ -248,7 +249,16 @@ await step('сторож: оба входа в шторку зовут один 
   assert.match(calloutBody, /state\?\.sheetCtrl\?\.open\(entry\.key\)/, 'выноска обязана звать sheetCtrl.open()');
   assert.match(rowBody, /state\?\.sheetCtrl\?\.open\(entry\.key\)/, 'строка списка обязана звать sheetCtrl.open()');
 
-  assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/, 'запись идёт только через очередь queue.js');
+  // T32: единственное легитимное прямое исключение — writeRemoteProfile()
+  // (смена модели тела шлётся в profile.json, best-effort в фоне); запись
+  // сессий по-прежнему идёт только через очередь queue.js.
+  assert.doesNotMatch(source, /\blistFiles\b/, 'запись сессии идёт только через очередь queue.js');
+  assert.ok(
+    /async function writeRemoteProfile\(/.test(source),
+    'прямой writeFile обязан жить только внутри writeRemoteProfile()'
+  );
+  const nonProfileSource = source.replace(/async function writeRemoteProfile\([^)]*\) \{[\s\S]*?\n\}\n/, '');
+  assert.doesNotMatch(nonProfileSource, /\bwriteFile\(/, 'writeFile встретился вне writeRemoteProfile() — запись сессии обязана идти через очередь queue.js');
   assert.doesNotMatch(source, /\benqueue\(/, 'T14: склейка дня работает только через enqueueEntry(), не через голый enqueue()');
   assert.match(source, /import \{ enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntries \} from '\.\.\/queue\.js'/);
 });

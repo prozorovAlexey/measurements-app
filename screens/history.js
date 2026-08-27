@@ -5,9 +5,9 @@
 import { setHeaderStatus } from '../app.js';
 import { accountDataDir, accountIndexPath } from '../accounts.js';
 import { getMeasurement, loadCatalog } from '../catalog.js';
-import { readFile, listFiles } from '../github.js';
+import { readFile, readFileOrNull, listFiles } from '../github.js';
 import { sparkline } from '../sparkline.js';
-import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
+import { getAccountIndexCache, getActiveAccount, setAccountIndexCache } from '../store.js';
 
 export const title = 'История';
 
@@ -38,7 +38,7 @@ function indexData(text) {
 }
 
 function cachedIndex() {
-  const cached = getIndexCache();
+  const cached = getAccountIndexCache(getActiveAccount());
   return cached && cached.data && typeof cached.data === 'object' ? cached.data : null;
 }
 
@@ -361,7 +361,9 @@ export async function render(root, params) {
   }
 
   const results = await Promise.allSettled([
-    readFile(accountIndexPath(getActiveAccount())).then((result) => indexData(result.content)),
+    // Пустой/несуществующий index.json (профиль без первой сессии) — не
+    // ошибка, а легитимно пустой индекс.
+    readFileOrNull(accountIndexPath(getActiveAccount())).then((result) => (result ? indexData(result.content) : {})),
     loadRows(key)
   ]);
   if (outdated(token)) return;
@@ -371,7 +373,7 @@ export async function render(root, params) {
   let rows = [];
   if (results[0].status === 'fulfilled') {
     data = results[0].value;
-    setIndexCache(data);
+    setAccountIndexCache(getActiveAccount(), data);
   } else {
     errors.push({ heading: 'Спарклайн не обновился', reason: results[0].reason });
   }

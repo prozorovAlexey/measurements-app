@@ -152,6 +152,10 @@ globalThis.localStorage = {
 
 const CATALOG_PATH = new URL('./catalog.json', import.meta.url);
 const CATALOG_RAW = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
+// T32: кэш index.json/profile и путь GitHub — per-account, экрану нужен
+// активный профиль в localStorage, иначе getActiveAccount() пуст и кэш
+// читается/пишется в никуда.
+const ACCOUNT = 'alex';
 let githubReply = { latest: {}, series: {} };
 let catalogBroken = false;
 let catalogFetchCalls = 0;
@@ -237,11 +241,9 @@ async function renderScreen(index, profile = null) {
   figureScreen.destroy();
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({
-    data: index,
-    fetchedAt: '2026-08-19T12:00:00Z'
-  }));
-  if (profile) storage.set(store.KEYS.profile, JSON.stringify(profile));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, index);
+  if (profile) store.setAccountProfile(ACCOUNT, profile);
   githubReply = index;
   const root = createElement('main');
   root.className = 'screen';
@@ -265,10 +267,8 @@ await step('cache-first: полный DOM виден до завершения c
   figureScreen.destroy();
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({
-    data: FULL_INDEX,
-    fetchedAt: '2026-08-19T12:00:00Z'
-  }));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, FULL_INDEX);
   storage.set(store.KEYS.catalog, JSON.stringify({
     data: CATALOG_RAW,
     fetchedAt: '2026-08-19T12:00:00Z'
@@ -326,10 +326,8 @@ await step('lifecycle: ранний destroy снимает class и online-liste
   figureScreen.destroy();
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({
-    data: FULL_INDEX,
-    fetchedAt: '2026-08-19T12:00:00Z'
-  }));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, FULL_INDEX);
   catalogBroken = true;
 
   const onlineBefore = (windowListeners.get('online') ?? []).length;
@@ -348,10 +346,8 @@ await step('lifecycle: ранний destroy снимает class и online-liste
 await step('lifecycle: после ошибки каталога online повторяет полный старт', async () => {
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({
-    data: FULL_INDEX,
-    fetchedAt: '2026-08-19T12:00:00Z'
-  }));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, FULL_INDEX);
   githubReply = FULL_INDEX;
   catalogBroken = true;
 
@@ -537,9 +533,24 @@ await step('T16: под-вкладка «Сравнение» подсвечив
 await step('сторож: экран read-only и окрашивает Δ только результатом asof.delta()', () => {
   const source = readFileSync(new URL('./screens/figure.js', import.meta.url), 'utf8');
   // T13/T14 добавили шторку быстрого ввода — экран больше не read-only
-  // в буквальном смысле, но по-прежнему не трогает GitHub API напрямую:
-  // запись идёт только через enqueueEntry() из queue.js (T14, склейка дня).
-  assert.doesNotMatch(source, /\b(?:writeFile|listFiles)\b/);
+  // в буквальном смысле, но по-прежнему не трогает GitHub API напрямую для
+  // самих замеров: запись сессии идёт только через enqueueEntry() из
+  // queue.js (T14, склейка дня). T32 добавляет ровно одно легитимное прямое
+  // исключение — writeRemoteProfile() шлёт смену модели тела в profile.json
+  // (read-sha-write-retry-on-conflict, best-effort в фоне), listFiles экран
+  // по-прежнему не зовёт вовсе.
+  assert.doesNotMatch(source, /\blistFiles\b/);
+  assert.equal(
+    (source.match(/\bwriteFile\(/g) ?? []).length,
+    2,
+    'writeFile должен звучать только внутри writeRemoteProfile() (T32): первая попытка + один повтор на conflict'
+  );
+  const writeRemoteProfileBody = /async function writeRemoteProfile\([^)]*\) \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
+  assert.equal(
+    (writeRemoteProfileBody.match(/\bwriteFile\(/g) ?? []).length,
+    2,
+    'оба вызова writeFile должны жить внутри writeRemoteProfile(), а не где-то ещё в экране'
+  );
   assert.match(source, /import \{ delta, sliceAt, sliceDates \} from '\.\.\/asof\.js'/);
   assert.equal((source.match(/\bdelta\s*\(/g) ?? []).length, 2, 'строки и KPI веса используют asof.delta()');
   assert.equal((source.match(/change\.tone/g) ?? []).length, 1, 'тон класса берётся из delta().tone');
@@ -555,7 +566,7 @@ await step('сторож: экран read-only и окрашивает Δ тол
     source.indexOf('export async function render'),
     source.indexOf('export function destroy')
   );
-  const cacheAt = renderBlock.indexOf('getIndexCache()');
+  const cacheAt = renderBlock.indexOf('getAccountIndexCache(getActiveAccount())');
   const catalogCacheAt = renderBlock.indexOf('loadCachedCatalog()');
   const classAt = renderBlock.indexOf("root.classList.add('figure-screen')");
   const listenerAt = renderBlock.indexOf("window.addEventListener('online', handleOnline)");

@@ -1,5 +1,7 @@
-// Автотест экрана настроек в объёме T8 (§7.4 спеки): PAT, счётчик открытий,
-// JSON-экспорт, состояние офлайн-очереди и кнопка «отправить сейчас».
+// Автотест экрана настроек в объёме T8 (§7.4 спеки) + T34 (§17 контракта):
+// PAT, счётчик открытий, JSON-экспорт активного профиля, состояние офлайн-
+// очереди, кнопка «отправить сейчас», смена пароля, смена модели тела
+// и удаление профиля.
 //
 // Запуск (node на PATH — v6.17.1, ES-модулей не понимает, §12 контракта):
 //
@@ -15,6 +17,11 @@
 //
 // Мини-DOM — тот же, что в cheatsheet.selftest.mjs и entry.selftest.mjs.
 // Скопирован намеренно: общий модуль-хелпер связал бы тесты разных задач.
+//
+// accounts.json/profile.json стабятся отдельно от remoteFiles (тот держит
+// только файлы сессий) — тем же приёмом, что и в login.selftest.mjs:
+// изменяемое состояние + счётчик PUT-попыток, чтобы проверить перечитывающий
+// повтор на 409-конфликте (T34, приём read-sha-write-retry).
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -168,13 +175,44 @@ globalThis.localStorage = {
 
 const TOKEN = 'github_pat_fixture';
 const DAY = '2026-08-14';
+const ACCOUNT = 'alex';
+const DATA_DIR = `accounts/${ACCOUNT}/data`; // == accounts.accountDataDir(ACCOUNT)
 
 const calls = [];
 let putReply = { kind: 'ok' };
 const remoteFiles = new Map();
 
+// accounts.json — изменяемое состояние + счётчик PUT-попыток (как в
+// login.selftest.mjs): нужно проверить и обычную запись, и перечитывающий
+// повтор на 409-конфликте.
+let accountsState = null; // { data, sha } | null (=> accounts.json ещё не создан)
+let accountsPutMode = 'ok'; // 'ok' | 'conflict-once' | 'fail'
+let accountsPutAttempts = 0;
+
+// profile.json по каждому профилю — та же идея, отдельно от accountsState.
+let profileState = new Map(); // accountId -> { data, sha }
+let profilePutMode = 'ok';
+let profilePutAttempts = 0;
+
 function jsonReply(payload) {
   return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(payload) };
+}
+
+function notFoundReply() {
+  return { ok: false, status: 404, headers: { get: () => null }, text: async () => '' };
+}
+
+function conflictReply() {
+  return {
+    ok: false,
+    status: 409,
+    headers: { get: () => null },
+    text: async () => JSON.stringify({ message: 'sha does not match' })
+  };
+}
+
+function failReply(status = 500) {
+  return { ok: false, status, headers: { get: () => null }, text: async () => '' };
 }
 
 globalThis.fetch = async (url, init = {}) => {
@@ -182,7 +220,56 @@ globalThis.fetch = async (url, init = {}) => {
   assert.ok(target.startsWith('https://api.github.com/'), `неожиданный хост: ${target}`);
   const method = String(init.method ?? 'GET').toUpperCase();
   const path = decodeURIComponent(new URL(target).pathname.split('/contents/')[1] ?? '');
-  calls.push({ method, path });
+  calls.push({ method, path, body: typeof init.body === 'string' ? JSON.parse(init.body) : null });
+
+  if (path === 'accounts.json') {
+    if (method === 'GET') {
+      if (!accountsState) return notFoundReply();
+      return jsonReply({
+        type: 'file',
+        encoding: 'base64',
+        content: Buffer.from(JSON.stringify(accountsState.data), 'utf8').toString('base64'),
+        sha: accountsState.sha
+      });
+    }
+    if (method === 'PUT') {
+      accountsPutAttempts += 1;
+      if (accountsPutMode === 'conflict-once' && accountsPutAttempts === 1) return conflictReply();
+      if (accountsPutMode === 'fail') return failReply();
+      const written = JSON.parse(init.body);
+      accountsState = {
+        data: JSON.parse(Buffer.from(written.content, 'base64').toString('utf8')),
+        sha: `reg-sha-${accountsPutAttempts}`
+      };
+      return jsonReply({ content: { sha: accountsState.sha, path }, commit: { sha: 'commit' } });
+    }
+  }
+
+  if (path.startsWith('accounts/') && path.endsWith('/profile.json')) {
+    const accountId = path.split('/')[1];
+    if (method === 'GET') {
+      const stored = profileState.get(accountId);
+      if (!stored) return notFoundReply();
+      return jsonReply({
+        type: 'file',
+        encoding: 'base64',
+        content: Buffer.from(JSON.stringify(stored.data), 'utf8').toString('base64'),
+        sha: stored.sha
+      });
+    }
+    if (method === 'PUT') {
+      profilePutAttempts += 1;
+      if (profilePutMode === 'conflict-once' && profilePutAttempts === 1) return conflictReply();
+      if (profilePutMode === 'fail') return failReply();
+      const written = JSON.parse(init.body);
+      const next = {
+        data: JSON.parse(Buffer.from(written.content, 'base64').toString('utf8')),
+        sha: `profile-sha-${profilePutAttempts}`
+      };
+      profileState.set(accountId, next);
+      return jsonReply({ content: { sha: next.sha, path }, commit: { sha: 'commit' } });
+    }
+  }
 
   if (method === 'PUT') {
     if (putReply.kind === 'offline') throw new TypeError('сети нет (заглушка теста)');
@@ -190,15 +277,6 @@ globalThis.fetch = async (url, init = {}) => {
       return { ok: false, status: putReply.status, headers: { get: () => null }, text: async () => '' };
     }
     return jsonReply({ content: { sha: 'sha-written', path }, commit: { sha: 'commit' } });
-  }
-  if (path === 'data') {
-    return jsonReply(Array.from(remoteFiles, ([filePath, content]) => ({
-      type: 'file',
-      name: filePath.split('/').at(-1),
-      path: filePath,
-      sha: `sha-${filePath}`,
-      size: content.length
-    })));
   }
   if (remoteFiles.has(path)) {
     return jsonReply({
@@ -208,10 +286,25 @@ globalThis.fetch = async (url, init = {}) => {
       sha: `sha-${path}`
     });
   }
+  // Листинг директории: и настоящий accountDataDir(ACCOUNT), и любой другой
+  // путь с файлами в remoteFiles под ним — GitHub Contents API отдаёт массив
+  // и для пустой (ещё не заведённой) директории.
+  const dirPrefix = `${path}/`;
+  const dirMatches = Array.from(remoteFiles.keys()).filter((key) => key.startsWith(dirPrefix));
+  if (dirMatches.length > 0 || path === DATA_DIR) {
+    return jsonReply(dirMatches.map((filePath) => ({
+      type: 'file',
+      name: filePath.split('/').at(-1),
+      path: filePath,
+      sha: `sha-${filePath}`,
+      size: remoteFiles.get(filePath).length
+    })));
+  }
   return jsonReply([]);
 };
 
 const settings = await import('./screens/settings.js');
+const accounts = await import('./accounts.js');
 const github = await import('./github.js');
 const queue = await import('./queue.js');
 const store = await import('./store.js');
@@ -233,7 +326,12 @@ async function step(name, fn) {
 // ===== Фикстуры ===========================================================
 
 async function settle() {
-  for (let i = 0; i < 8; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+  // T34: смена пароля и смена модели тела на conflict-once цепляют реальный
+  // PBKDF2 (verifyPassword + hashPassword) и до двух PUT с перечитыванием —
+  // длиннее, чем что-либо в этом файле раньше. 8 тиков местами не хватало
+  // (флуктуация реального времени хеширования) — с запасом взято 20, как
+  // и в login.selftest.mjs (10) с поправкой на более длинную цепочку здесь.
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
 }
 
 function sessionText(value) {
@@ -253,13 +351,30 @@ function sessionText(value) {
   }, null, 2);
 }
 
+// T34: реестр с одним профилем (ACCOUNT) — общая фикстура для карточек
+// пароля и удаления. hashPassword гоняет настоящий crypto.subtle, как
+// в accounts.selftest.mjs/login.selftest.mjs — не имитацию.
+const CURRENT_PASSWORD = 'Qwe123';
+const currentHash = await accounts.hashPassword(CURRENT_PASSWORD);
+const ACCOUNT_RECORD = {
+  id: ACCOUNT, label: 'Alex', salt: currentHash.salt, hash: currentHash.hash, createdAt: '2026-08-01'
+};
+const BASE_REGISTRY = { version: 1, accounts: [ACCOUNT_RECORD] };
+
 async function renderScreen(options = {}) {
   const {
     jobs = [],
     opens = null,
     put = { kind: 'ok' },
     remote = [],
-    token = TOKEN
+    token = TOKEN,
+    activeAccount = ACCOUNT,
+    registry = null,
+    registrySha = 'reg-sha-0',
+    profile = null,
+    profileSha = 'profile-sha-0',
+    accountsPutModeOpt = 'ok',
+    profilePutModeOpt = 'ok'
   } = options;
 
   settings.destroy();
@@ -273,13 +388,21 @@ async function renderScreen(options = {}) {
   remoteFiles.clear();
   toastHost.replaceChildren();
   putReply = put;
+  accountsState = registry ? { data: registry, sha: registrySha } : null;
+  accountsPutMode = accountsPutModeOpt;
+  accountsPutAttempts = 0;
+  profileState = new Map();
+  if (profile) profileState.set(activeAccount, { data: profile, sha: profileSha });
+  profilePutMode = profilePutModeOpt;
+  profilePutAttempts = 0;
   if (token) storage.set(store.KEYS.token, token);
   if (opens) storage.set(store.KEYS.opens, JSON.stringify(opens));
+  if (activeAccount) storage.set(store.KEYS.activeAccount, activeAccount);
   for (const [path, content] of remote) remoteFiles.set(path, content);
 
   for (const value of jobs) {
     await queue.enqueue({
-      path: `data/${DAY}.json`,
+      path: `${DATA_DIR}/${DAY}.json`,
       content: sessionText(value),
       message: `Сессия ${DAY} 09:12`
     });
@@ -319,6 +442,46 @@ async function click(button) {
   assert.ok(button, 'кнопки нет на экране');
   button.dispatch('click');
   await settle();
+}
+
+// --- T34: карточки пароля/тела/удаления --------------------------------
+
+function passwordCardOf(root) {
+  return byClass(root, 'settings-password')[0];
+}
+
+function bodyCardOf(root) {
+  return byClass(root, 'settings-body')[0];
+}
+
+function deleteCardOf(root) {
+  return byClass(root, 'settings-delete')[0];
+}
+
+function currentPasswordInput(root) {
+  return inputs(passwordCardOf(root)).find((item) => item.autocomplete === 'current-password');
+}
+
+function newPasswordInput(root) {
+  return inputs(passwordCardOf(root)).find((item) => item.autocomplete === 'new-password');
+}
+
+async function type(input, value) {
+  input.value = value;
+  input.dispatch('input');
+  await settle();
+}
+
+function putCalls(path) {
+  return calls.filter((call) => call.method === 'PUT' && call.path === path);
+}
+
+function getCalls(path) {
+  return calls.filter((call) => call.method === 'GET' && call.path === path);
+}
+
+function decodePutContent(call) {
+  return Buffer.from(call.body.content, 'base64').toString('utf8');
 }
 
 const toasts = () => toastHost.children.map((node) => node.textContent);
@@ -415,7 +578,7 @@ await step('T15: счётчики opens.sizes и opens.app видны отдел
   assert.equal(byClass(appBlock, 'settings-metric')[0]?.textContent, '0');
 });
 
-await step('T8: экспорт скачивает валидный JSON со всеми файлами сессий', async () => {
+await step('T8/T34: экспорт скачивает валидный JSON только активного профиля', async () => {
   const first = sessionText(86.8);
   const secondData = JSON.parse(sessionText(64.2));
   secondData.date = '2026-08-15';
@@ -431,29 +594,32 @@ await step('T8: экспорт скачивает валидный JSON со в�
   const pending = JSON.stringify(pendingData);
   const root = await renderScreen({
     remote: [
-      ['data/2026-08-15.json', second],
-      ['data/README.txt', 'не сессия'],
-      [`data/${DAY}--2.json`, first],
-      [`data/${DAY}.json`, first]
+      [`${DATA_DIR}/2026-08-15.json`, second],
+      [`${DATA_DIR}/README.txt`, 'не сессия'],
+      [`${DATA_DIR}/${DAY}--2.json`, first],
+      [`${DATA_DIR}/${DAY}.json`, first]
     ]
   });
   for (let copy = 1; copy <= 3; copy += 1) {
     await queue.enqueue({
-      path: `data/${DAY}.json`,
+      path: `${DATA_DIR}/${DAY}.json`,
       content: first,
       message: `дубль ${copy}`
     });
   }
-  await queue.enqueue({ path: 'data/2026-08-16.json', content: pending, message: 'офлайн-сессия' });
-  await queue.enqueue({ path: 'data/2026-08-17.json', content: '{битый json', message: 'мусор' });
-  await queue.enqueue({ path: 'notes/task.json', content: pending, message: 'не session job' });
-  await queue.enqueue({ path: 'data/2026-08-18.json', content: '{"kind":"не сессия"}', message: 'не session object' });
-  await queue.enqueue({ path: 'data/2026-08-19.json', content: JSON.stringify({ ...pendingData, date: '2026-02-30' }), message: 'битая дата' });
-  await queue.enqueue({ path: 'data/2026-08-20.json', content: JSON.stringify({ ...pendingData, time: '25:00' }), message: 'битое время' });
-  await queue.enqueue({ path: 'data/2026-08-21.json', content: JSON.stringify({ ...pendingData, entries: [1, 2] }), message: 'не entries' });
-  await queue.enqueue({ path: 'data/2026-08-22.json', content: JSON.stringify({ ...pendingData, entries: [{ ...pendingData.entries[0], key: '' }] }), message: 'нет key' });
-  await queue.enqueue({ path: 'data/2026-08-23.json', content: JSON.stringify({ ...pendingData, date: [pendingData.date] }), message: 'date array' });
-  await queue.enqueue({ path: 'data/2026-08-24.json', content: JSON.stringify({ ...pendingData, time: [pendingData.time] }), message: 'time array' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-16.json`, content: pending, message: 'офлайн-сессия' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-17.json`, content: '{битый json', message: 'мусор' });
+  await queue.enqueue({ path: 'notes/task.json', content: pending, message: 'чужой путь' });
+  // T34: задание чужого профиля — job.accountId === 'other' !== активного,
+  // должно быть исключено фильтром loadQueuedSessions(), а не только регэкспом пути.
+  await queue.enqueue({ path: 'accounts/other/data/2026-08-16.json', content: pending, message: 'чужой профиль' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-18.json`, content: '{"kind":"не сессия"}', message: 'не session object' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-19.json`, content: JSON.stringify({ ...pendingData, date: '2026-02-30' }), message: 'битая дата' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-20.json`, content: JSON.stringify({ ...pendingData, time: '25:00' }), message: 'битое время' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-21.json`, content: JSON.stringify({ ...pendingData, entries: [1, 2] }), message: 'не entries' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-22.json`, content: JSON.stringify({ ...pendingData, entries: [{ ...pendingData.entries[0], key: '' }] }), message: 'нет key' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-23.json`, content: JSON.stringify({ ...pendingData, date: [pendingData.date] }), message: 'date array' });
+  await queue.enqueue({ path: `${DATA_DIR}/2026-08-24.json`, content: JSON.stringify({ ...pendingData, time: [pendingData.time] }), message: 'time array' });
   await settle();
   await click(buttonWith(root, 'Скачать всё как JSON'));
 
@@ -469,11 +635,11 @@ await step('T8: экспорт скачивает валидный JSON со в�
     JSON.parse(first),
     JSON.parse(pending)
   ]);
-  assert.deepEqual(calls.map((call) => `${call.method} ${call.path}`).sort(), [
-    'GET data',
-    `GET data/${DAY}--2.json`,
-    `GET data/${DAY}.json`,
-    'GET data/2026-08-15.json'
+  assert.deepEqual(calls.filter((call) => call.method === 'GET').map((call) => call.path).sort(), [
+    DATA_DIR,
+    `${DATA_DIR}/${DAY}--2.json`,
+    `${DATA_DIR}/${DAY}.json`,
+    `${DATA_DIR}/2026-08-15.json`
   ].sort());
 });
 
@@ -659,7 +825,7 @@ await step('§7.4: «Отправить сейчас» дошлёт очеред
   const root = await renderScreen({ jobs: [86.8] });
   await click(sendButton(root));
 
-  assert.deepEqual(calls.map((call) => `${call.method} ${call.path}`), ['GET data', `PUT data/${DAY}.json`]);
+  assert.deepEqual(calls.map((call) => `${call.method} ${call.path}`), [`GET ${DATA_DIR}`, `PUT ${DATA_DIR}/${DAY}.json`]);
   assert.deepEqual(await queue.listJobs(), [], 'задание осталось в очереди');
   assert.equal(jobCards(root).length, 0, 'экран не обновился после отправки');
   assert.ok(toasts().some((text) => text.includes('Отправлено: 1')), toasts().join(' | '));
@@ -672,7 +838,7 @@ await step('§7.4: две сессии одного дня уезжают раз
 
   assert.deepEqual(
     calls.filter((call) => call.method === 'PUT').map((call) => call.path),
-    [`data/${DAY}.json`, `data/${DAY}--2.json`]
+    [`${DATA_DIR}/${DAY}.json`, `${DATA_DIR}/${DAY}--2.json`]
   );
   assert.equal(byClass(root, 'queue-empty').length, 1);
 });
@@ -712,6 +878,157 @@ await step('удаление задания двухшаговое: сначал
   await click(buttonWith(root, 'Удалить навсегда'));
   assert.deepEqual(await queue.listJobs(), []);
   assert.equal(jobCards(root).length, 0);
+});
+
+// --- T34: смена пароля ------------------------------------------------------
+
+await step('смена пароля: верный текущий — новый хеш уходит в PUT accounts.json, поля очищаются', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY });
+  await type(currentPasswordInput(root), CURRENT_PASSWORD);
+  await type(newPasswordInput(root), 'NewPass1');
+  await click(buttonWith(passwordCardOf(root), 'Сменить пароль'));
+
+  const puts = putCalls('accounts.json');
+  assert.equal(puts.length, 1, 'ожидался ровно один PUT реестра');
+  const written = JSON.parse(decodePutContent(puts[0]));
+  const record = written.accounts.find((item) => item.id === ACCOUNT);
+  assert.ok(record, 'записи профиля нет в записанном реестре');
+  assert.notEqual(record.hash, ACCOUNT_RECORD.hash, 'хеш не изменился');
+  assert.notEqual(record.salt, ACCOUNT_RECORD.salt, 'соль не пересчитана заново');
+  assert.equal(await accounts.verifyPassword('NewPass1', record), true, 'новый пароль не проходит verifyPassword по записанному хешу');
+
+  assert.ok(toasts().some((text) => text === 'Пароль изменён.'), toasts().join(' | '));
+  assert.equal(currentPasswordInput(root).value, '', 'поле текущего пароля не очистилось');
+  assert.equal(newPasswordInput(root).value, '', 'поле нового пароля не очистилось');
+});
+
+await step('смена пароля: неверный текущий — «Неверный пароль.», реестр не пишется', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY });
+  await type(currentPasswordInput(root), 'wrong-current');
+  await type(newPasswordInput(root), 'NewPass1');
+  await click(buttonWith(passwordCardOf(root), 'Сменить пароль'));
+
+  assert.equal(putCalls('accounts.json').length, 0, 'реестр записан при неверном текущем пароле');
+  assert.ok(toasts().some((text) => text === 'Неверный пароль.'), toasts().join(' | '));
+});
+
+await step('смена пароля: короткий новый пароль — отказ клиентской валидацией, без сети', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY });
+  await type(currentPasswordInput(root), CURRENT_PASSWORD);
+  await type(newPasswordInput(root), 'abc');
+  await click(buttonWith(passwordCardOf(root), 'Сменить пароль'));
+
+  assert.equal(getCalls('accounts.json').length, 0, 'валидация нового пароля сходила в сеть');
+  assert.match(textOf(passwordCardOf(root)), /[а-яё]/i, 'нет русского текста об ошибке валидации');
+});
+
+await step('T34 verify: 409-конфликт при смене пароля — перечитывает и повторяет запись', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY, accountsPutModeOpt: 'conflict-once' });
+  await type(currentPasswordInput(root), CURRENT_PASSWORD);
+  await type(newPasswordInput(root), 'NewPass1');
+  await click(buttonWith(passwordCardOf(root), 'Сменить пароль'));
+
+  assert.equal(putCalls('accounts.json').length, 2, 'после конфликта не случилось повторной записи');
+  assert.equal(getCalls('accounts.json').length, 2, 'после конфликта не случилось перечитывания реестра');
+  assert.ok(toasts().some((text) => text === 'Пароль изменён.'), toasts().join(' | '));
+});
+
+// --- T34: модель тела --------------------------------------------------------
+
+await step('модель тела: переключение пишет profile.json (read-sha-write) и обновляет локально', async () => {
+  const root = await renderScreen({ profile: { sex: 'male' } });
+  assert.equal(store.getAccountProfile(ACCOUNT).sex, 'male');
+
+  await click(buttonWith(bodyCardOf(root), 'Женский'));
+
+  assert.equal(store.getAccountProfile(ACCOUNT).sex, 'female', 'локальный профиль не обновился сразу');
+  const puts = putCalls(`accounts/${ACCOUNT}/profile.json`);
+  assert.equal(puts.length, 1, 'ожидался ровно один PUT profile.json');
+  assert.deepEqual(JSON.parse(decodePutContent(puts[0])), { sex: 'female' });
+  const active = byClass(bodyCardOf(root), 'fig-sex__item--active')[0];
+  assert.equal(active?.textContent, 'Женский', 'активная пилюля не переключилась в DOM');
+});
+
+await step('модель тела: повторный клик по уже активному варианту не пишет сеть', async () => {
+  const root = await renderScreen({ profile: { sex: 'male' } });
+  await click(buttonWith(bodyCardOf(root), 'Мужской'));
+  assert.equal(putCalls(`accounts/${ACCOUNT}/profile.json`).length, 0, 'клик по уже активному полу ушёл в сеть');
+});
+
+await step('модель тела: провал записи — toast с текстом ошибки, локальное значение не откатывается', async () => {
+  const root = await renderScreen({ profile: { sex: 'male' }, profilePutModeOpt: 'fail' });
+  await click(buttonWith(bodyCardOf(root), 'Женский'));
+
+  assert.equal(store.getAccountProfile(ACCOUNT).sex, 'female', 'локальное значение откатилось при сетевой ошибке');
+  assert.ok(toasts().some((text) => text.includes('Неожиданный ответ GitHub')), toasts().join(' | '));
+});
+
+await step('T34 verify: 409-конфликт при смене модели тела — перечитывает и повторяет запись', async () => {
+  const root = await renderScreen({ profile: { sex: 'male' }, profilePutModeOpt: 'conflict-once' });
+  await click(buttonWith(bodyCardOf(root), 'Женский'));
+
+  const puts = putCalls(`accounts/${ACCOUNT}/profile.json`);
+  assert.equal(puts.length, 2, 'после конфликта не случилось повторной записи profile.json');
+  assert.deepEqual(JSON.parse(decodePutContent(puts[1])), { sex: 'female' });
+});
+
+// --- T34: удаление профиля ---------------------------------------------------
+
+await step('удаление профиля: без заданий очереди — подтверждение без текста про сессии', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY });
+  await click(buttonWith(deleteCardOf(root), 'Удалить профиль'));
+
+  assert.ok(textOf(deleteCardOf(root)).includes('удалён навсегда'), textOf(deleteCardOf(root)));
+  assert.ok(!textOf(deleteCardOf(root)).includes('Несинхронизированных'), 'пустая очередь показала текст про сессии');
+});
+
+await step('удаление профиля: с заданиями — текст с числом несинхронизированных сессий', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY, jobs: [86.8, 87.4] });
+  await click(buttonWith(deleteCardOf(root), 'Удалить профиль'));
+
+  assert.ok(textOf(deleteCardOf(root)).includes('Несинхронизированных сессий: 2'), textOf(deleteCardOf(root)));
+});
+
+await step('удаление профиля: «Отмена» возвращает к исходной кнопке без удаления', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY, jobs: [86.8] });
+  await click(buttonWith(deleteCardOf(root), 'Удалить профиль'));
+  await click(buttonWith(deleteCardOf(root), 'Отмена'));
+
+  assert.ok(buttonWith(deleteCardOf(root), 'Удалить профиль'), 'кнопка запроса подтверждения не вернулась');
+  assert.equal((await queue.listJobs()).length, 1, 'отмена всё равно удалила задание');
+  assert.equal(store.getActiveAccount(), ACCOUNT, 'отмена всё равно разлогинила профиль');
+});
+
+await step('T34 verify: подтверждение удаляет задания профиля, реестр, локальный кэш и переходит на #/login', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY, jobs: [86.8, 87.4] });
+  store.setAccountIndexCache(ACCOUNT, { totals: 'cached' });
+  globalThis.location.hash = '#/settings-test';
+
+  await click(buttonWith(deleteCardOf(root), 'Удалить профиль'));
+  await click(buttonWith(deleteCardOf(root), 'Удалить навсегда'));
+
+  assert.deepEqual(await queue.listJobs(), [], 'задания профиля не были удалены из очереди');
+  const puts = putCalls('accounts.json');
+  assert.equal(puts.length, 1, 'ожидался ровно один PUT реестра');
+  const written = JSON.parse(decodePutContent(puts[0]));
+  assert.equal(written.accounts.some((item) => item.id === ACCOUNT), false, 'запись профиля осталась в реестре');
+  assert.equal(store.getActiveAccount(), null, 'активный профиль не сброшен');
+  assert.equal(store.getAccountIndexCache(ACCOUNT), null, 'локальный кэш профиля не очищен');
+  assert.equal(globalThis.location.hash, '#/login', 'не случился переход на экран входа');
+  assert.ok(toasts().some((text) => text === 'Профиль удалён.'), toasts().join(' | '));
+});
+
+await step('удаление профиля: задания другого профиля в очереди не трогаются', async () => {
+  const root = await renderScreen({ registry: BASE_REGISTRY, jobs: [86.8] });
+  await queue.enqueue({ path: 'accounts/other/data/2026-08-14.json', content: sessionText(50), message: 'чужой профиль' });
+  await settle();
+
+  await click(buttonWith(deleteCardOf(root), 'Удалить профиль'));
+  await click(buttonWith(deleteCardOf(root), 'Удалить навсегда'));
+
+  const remaining = await queue.listJobs();
+  assert.equal(remaining.length, 1, 'задание чужого профиля тоже было удалено');
+  assert.equal(remaining[0].accountId, 'other');
 });
 
 // --- Живое состояние -------------------------------------------------------
@@ -762,11 +1079,25 @@ await step('§0: экран не знает про localStorage, IndexedDB, inne
   assert.ok(!/https?:\/\//.test(CODE), 'внешний адрес в коде экрана');
 });
 
-await step('чек-лист §10: экспорт только читает repo B и не правит сессии', () => {
-  assert.ok(!/writeFile/.test(CODE), 'экран настроек получил путь к правке repo B');
-  assert.match(CODE, /listRepoFiles\('data'\)/, 'экспорт не перечисляет файлы сессий');
+// T34 завела в экран настоящий writeFile/sha (пароль, тело, удаление
+// профиля) — прежний тотальный запрет на весь файл больше не подходит.
+// Сторож сузился до самих функций экспорта: loadSessions()/loadQueuedSessions()
+// обязаны остаться read-only, что бы ни появилось в остальном модуле.
+await step('чек-лист §10: loadSessions()/loadQueuedSessions() только читают repo B', () => {
+  const loadSessionsBody = SOURCE.slice(
+    SOURCE.indexOf('async function loadSessions('),
+    SOURCE.indexOf('function validDate(')
+  );
+  const loadQueuedBody = SOURCE.slice(
+    SOURCE.indexOf('async function loadQueuedSessions('),
+    SOURCE.indexOf('function canonical(')
+  );
+  assert.ok(loadSessionsBody.length > 0 && loadQueuedBody.length > 0, 'не удалось вырезать тело функций экспорта');
+  assert.ok(!/writeFile/.test(loadSessionsBody), 'loadSessions() получила путь к правке repo B');
+  assert.ok(!/writeFile/.test(loadQueuedBody), 'loadQueuedSessions() получила путь к правке repo B');
+  assert.ok(!/\bsha\b/i.test(`${loadSessionsBody}\n${loadQueuedBody}`), 'экспорт использует sha — признак записи');
+  assert.match(CODE, /listRepoFiles\(accountDataDir\(getActiveAccount\(\)\)\)/, 'экспорт не перечисляет файлы сессий активного профиля');
   assert.match(CODE, /readFile\(file\.path\)/, 'экспорт не читает исходные сессии');
-  assert.ok(!/\bsha\b/i.test(CODE), 'в коде появилось sha');
 });
 
 await step('§13 DOM: ни одно задание не спрятано', async () => {

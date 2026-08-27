@@ -11,15 +11,31 @@
 // введённые замеры, поэтому она двухшаговая. Правкой истории это не является:
 // удалить можно только то, что ещё не записано в repo B.
 
-import { toast } from '../app.js';
-import { listFiles as listRepoFiles, readFile } from '../github.js';
+import { navigate, toast } from '../app.js';
+import {
+  accountDataDir,
+  accountProfilePath,
+  findAccount,
+  hashPassword,
+  parseRegistry,
+  removeAccount,
+  upsertAccount,
+  validatePassword,
+  verifyPassword
+} from '../accounts.js';
+import { GitHubError, listFiles as listRepoFiles, readFile, readFileOrNull, writeFile } from '../github.js';
 import { flush, isPersistent, listJobs, onQueueChange, removeJob } from '../queue.js';
 import {
+  clearAccountCache,
+  clearActiveAccount,
   clearToken,
+  getAccountProfile,
+  getActiveAccount,
   getCheatsheetOpens,
   getOpens,
   getStoredToken,
   isFineGrainedToken,
+  setAccountProfile,
   setToken
 } from '../store.js';
 
@@ -30,7 +46,8 @@ const FLUSHING_TEXT = 'Отправляю…';
 const EXPORT_TEXT = 'Скачать всё как JSON';
 const EXPORTING_TEXT = 'Собираю JSON…';
 const SESSION_NAME = /^\d{4}-\d{2}-\d{2}(?:--\d+)?\.json$/i;
-const SESSION_PATH = /^data\/\d{4}-\d{2}-\d{2}(?:--\d+)?\.json$/i;
+const REGISTRY_PATH = 'accounts.json';
+const MAX_WRITE_ATTEMPTS = 3;
 
 const STATES = new Map([
   ['pending', 'Ожидает отправки'],
@@ -75,6 +92,16 @@ function makeButton(text, className, onClick) {
   button.type = 'button';
   button.addEventListener('click', onClick);
   return button;
+}
+
+// Общий текст ошибки для новых карточек T34 (пароль, тело, удаление) — та же
+// идиома, что errorText() в screens/figure.js и screens/login.js, у каждого
+// экрана своя копия с подходящим дефолтом (§14 контракта: три похожих места
+// лучше преждевременной общей абстракции).
+function errorText(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim() !== '') return error.trim();
+  return 'Действие не выполнено.';
 }
 
 function buildSettingsHeading(kicker, titleText, metaText = null, metaTone = null) {
@@ -192,8 +219,10 @@ function parseSession(text, path) {
   }
 }
 
+// До T29/T30 читал listRepoFiles('data') — путь, которого для accountId
+// !== 'alex' больше ни у кого нет (T30 сознательно оставил починку на T34).
 async function loadSessions() {
-  const files = (await listRepoFiles('data'))
+  const files = (await listRepoFiles(accountDataDir(getActiveAccount())))
     .filter((file) => typeof file.name === 'string' && SESSION_NAME.test(file.name))
     .sort((left, right) => left.name.localeCompare(right.name));
   return Promise.all(files.map(async (file) => {
@@ -263,11 +292,15 @@ function isSession(data) {
   );
 }
 
+// Фильтр по job.accountId (поле есть с T30) вместо перестройки регэкспа
+// пути под динамический accounts/<id>/data/... — надёжнее и переживает
+// смену схемы пути без правки этого экрана.
 async function loadQueuedSessions() {
   const jobs = await listJobs();
+  const accountId = getActiveAccount();
   const sessions = [];
   for (const job of jobs) {
-    if (typeof job.path !== 'string' || !SESSION_PATH.test(job.path) || typeof job.content !== 'string') continue;
+    if (job.accountId !== accountId || typeof job.content !== 'string') continue;
     try {
       const data = JSON.parse(job.content);
       if (isSession(data)) sessions.push(data);
@@ -541,6 +574,356 @@ function paintUpdate() {
   card.children[2].append(button);
 }
 
+// ===== Смена пароля (T34) =================================================
+// Тот же приём read-sha-write-retry-on-conflict, что createAccount() в
+// screens/login.js (строки ~379-424): читаем реестр, проверяем текущий
+// пароль через accounts.verifyPassword, пишем новый хеш, на conflict —
+// один перечитывающий повтор (id не меняется, поэтому веток «занято» нет).
+// Логаут не выполняется — bm.active_account пароль не хранит, менять нечего.
+
+function paintPassword() {
+  if (state === null || !state.nodes.password) return;
+  const card = state.nodes.password;
+  const heading = buildSettingsHeading('Профиль', 'Смена пароля');
+
+  const currentField = el('label', 'field settings-field');
+  currentField.append(el('span', 'settings-field__label', 'Текущий пароль'));
+  const currentInput = el('input', 'settings-token__input');
+  currentInput.type = 'password';
+  currentInput.autocomplete = 'current-password';
+  currentInput.spellcheck = false;
+  currentInput.value = state.password.current;
+  currentInput.addEventListener('input', () => {
+    if (state === null) return;
+    state.password.current = currentInput.value;
+  });
+  currentField.append(currentInput);
+
+  const nextField = el('label', 'field settings-field');
+  nextField.append(el('span', 'settings-field__label', 'Новый пароль'));
+  const nextInput = el('input', 'settings-token__input');
+  nextInput.type = 'password';
+  nextInput.autocomplete = 'new-password';
+  nextInput.spellcheck = false;
+  nextInput.value = state.password.next;
+  nextInput.addEventListener('input', () => {
+    if (state === null) return;
+    state.password.next = nextInput.value;
+  });
+  nextField.append(nextInput);
+
+  const actions = el('div', 'settings-actions settings-actions--single');
+  if (state.password.error) actions.append(el('p', 'warn', state.password.error));
+  const button = makeButton(state.password.busy ? 'Меняю…' : 'Сменить пароль', 'btn btn--primary', () => {
+    void changePassword();
+  });
+  button.disabled = state.password.busy;
+  actions.append(button);
+
+  card.replaceChildren(heading, currentField, nextField, actions);
+}
+
+async function changePassword() {
+  if (state === null || state.password.busy) return;
+  const token = state.token;
+  const accountId = getActiveAccount();
+  const currentValue = state.password.current;
+  const validation = validatePassword(state.password.next);
+  if (!validation.ok) {
+    state.password.error = validation.message;
+    paintPassword();
+    return;
+  }
+
+  state.password.busy = true;
+  state.password.error = null;
+  paintPassword();
+
+  let registry;
+  let sha;
+  try {
+    const file = await readFile(REGISTRY_PATH);
+    if (outdated(token)) return;
+    registry = parseRegistry(JSON.parse(file.content));
+    sha = file.sha;
+  } catch (error) {
+    if (outdated(token)) return;
+    state.password.busy = false;
+    state.password.error = errorText(error);
+    paintPassword();
+    return;
+  }
+
+  const account = findAccount(registry, accountId);
+  if (!account) {
+    state.password.busy = false;
+    state.password.error = 'Профиль не найден в реестре.';
+    paintPassword();
+    return;
+  }
+
+  const verified = await verifyPassword(currentValue, account);
+  if (outdated(token)) return;
+  if (!verified) {
+    state.password.busy = false;
+    toast('Неверный пароль.', 'error');
+    paintPassword();
+    return;
+  }
+
+  let hashed;
+  try {
+    hashed = await hashPassword(validation.value);
+  } catch (error) {
+    if (outdated(token)) return;
+    state.password.busy = false;
+    state.password.error = errorText(error);
+    paintPassword();
+    return;
+  }
+  if (outdated(token)) return;
+
+  let newRegistry = upsertAccount(registry, { ...account, salt: hashed.salt, hash: hashed.hash });
+  let lastError = null;
+  let written = false;
+
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    try {
+      await writeFile(REGISTRY_PATH, `${JSON.stringify(newRegistry, null, 2)}\n`, {
+        message: `Смена пароля: ${account.label}`,
+        sha
+      });
+      written = true;
+      break;
+    } catch (error) {
+      if (outdated(token)) return;
+      lastError = error;
+      const conflict = error instanceof GitHubError && error.kind === 'conflict';
+      if (!conflict || attempt === MAX_WRITE_ATTEMPTS) break;
+
+      // Кто-то мог сменить реестр между нашим чтением и записью —
+      // перечитываем и повторяем на свежей копии (тот же приём, что в
+      // login.js).
+      let fresh;
+      try {
+        fresh = await readFile(REGISTRY_PATH);
+      } catch (rereadError) {
+        if (outdated(token)) return;
+        lastError = rereadError;
+        break;
+      }
+      if (outdated(token)) return;
+
+      registry = parseRegistry(JSON.parse(fresh.content));
+      sha = fresh.sha;
+      const freshAccount = findAccount(registry, accountId) ?? account;
+      newRegistry = upsertAccount(registry, { ...freshAccount, salt: hashed.salt, hash: hashed.hash });
+    }
+  }
+
+  if (!written) {
+    state.password.busy = false;
+    state.password.error = errorText(lastError);
+    paintPassword();
+    return;
+  }
+
+  state.password.busy = false;
+  state.password.current = '';
+  state.password.next = '';
+  toast('Пароль изменён.', 'ok');
+  paintPassword();
+}
+
+// ===== Модель тела (T34) ===================================================
+// Та же сегментированная пилюля male/female, что buildSexField/buildSexItem
+// в screens/figure.js, и тот же приём remote-записи profile.json
+// (read-sha-write-retry-on-conflict), что T32 добавил там же — код
+// скопирован, а не импортирован: контракт задачи прямо просит не выносить
+// в общий модуль ради двух вызовов (§14 контракта).
+
+function buildSexItem(label, sex, active) {
+  const item = el('button', active ? 'fig-sex__item fig-sex__item--active' : 'fig-sex__item', label);
+  item.type = 'button';
+  item.setAttribute('role', 'radio');
+  item.setAttribute('aria-checked', active ? 'true' : 'false');
+  item.addEventListener('click', () => {
+    if (state === null || state.profile.sex === sex) return;
+    const accountId = getActiveAccount();
+    state.profile = setAccountProfile(accountId, { sex });
+    paintBody();
+    void writeRemoteProfile(accountId, sex);
+  });
+  return item;
+}
+
+function buildSexField(profile) {
+  const field = el('div', 'fig-sex');
+  field.setAttribute('role', 'radiogroup');
+  field.setAttribute('aria-label', 'Модель тела');
+  field.append(
+    buildSexItem('Мужской', 'male', profile.sex === 'male'),
+    buildSexItem('Женский', 'female', profile.sex === 'female')
+  );
+  return field;
+}
+
+async function writeRemoteProfile(accountId, sex) {
+  const path = accountProfilePath(accountId);
+  const body = `${JSON.stringify({ sex }, null, 2)}\n`;
+  const message = `Смена модели тела: ${sex}`;
+
+  let sha = null;
+  try {
+    const existing = await readFileOrNull(path);
+    sha = existing ? existing.sha : null;
+  } catch (error) {
+    toast(errorText(error), 'error');
+    return;
+  }
+
+  try {
+    await writeFile(path, body, { sha, message });
+    return;
+  } catch (error) {
+    if (!(error instanceof GitHubError) || error.kind !== 'conflict') {
+      toast(errorText(error), 'error');
+      return;
+    }
+  }
+
+  // Кто-то (другое устройство того же профиля) мог записать profile.json
+  // между нашим чтением и записью — перечитываем и повторяем один раз.
+  let fresh;
+  try {
+    fresh = await readFileOrNull(path);
+  } catch (error) {
+    toast(errorText(error), 'error');
+    return;
+  }
+  try {
+    await writeFile(path, body, { sha: fresh ? fresh.sha : null, message });
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
+}
+
+function paintBody() {
+  if (state === null || !state.nodes.body) return;
+  const card = state.nodes.body;
+  const heading = buildSettingsHeading('Профиль', 'Модель тела');
+  const field = el('div', 'settings-field');
+  field.append(el('span', 'settings-field__label', 'Силуэт'), buildSexField(state.profile));
+  card.replaceChildren(heading, field);
+}
+
+// ===== Удаление профиля (T34) ==============================================
+// Реально удаляется только запись в accounts.json — файлы accounts/<id>/data/**,
+// index.json, profile.json в repo B не удаляются: в github.js нет DELETE-
+// обёртки над Contents API, заводить её ради одной кнопки — за пределами
+// задачи (осознанный выбор архитектора, план accounts-plan-T28-T35.md).
+
+function paintDelete() {
+  if (state === null || !state.nodes.delete) return;
+  const card = state.nodes.delete;
+  const heading = buildSettingsHeading('Профиль', 'Удаление профиля');
+  const intro = el(
+    'p',
+    'settings-card__intro',
+    'Удаляет вход в этот профиль: логин и пароль пропадут из общего реестра. Внесённые замеры в репозитории с данными не удаляются.'
+  );
+  const actions = el('div', 'settings-actions');
+
+  if (state.delete.confirming) {
+    const accountId = getActiveAccount();
+    const pendingCount = state.jobs.filter((job) => job.accountId === accountId).length;
+    const warnText = pendingCount > 0
+      ? `Несинхронизированных сессий: ${pendingCount}. Они пропадут вместе с профилем.`
+      : 'Профиль будет удалён навсегда.';
+    actions.append(el('p', 'warn', warnText));
+    const confirm = makeButton(state.delete.busy ? 'Удаляю…' : 'Удалить навсегда', 'btn btn--danger', () => {
+      void deleteAccount();
+    });
+    confirm.disabled = state.delete.busy;
+    actions.append(confirm);
+    const cancel = makeButton('Отмена', 'btn', () => {
+      if (state === null || state.delete.busy) return;
+      state.delete.confirming = false;
+      paintDelete();
+    });
+    cancel.disabled = state.delete.busy;
+    actions.append(cancel);
+  } else {
+    actions.append(makeButton('Удалить профиль', 'btn btn--danger', () => {
+      if (state === null) return;
+      state.delete.confirming = true;
+      paintDelete();
+    }));
+  }
+
+  card.replaceChildren(heading, intro, actions);
+}
+
+async function deleteAccount() {
+  if (state === null || state.delete.busy) return;
+  const token = state.token;
+  const accountId = getActiveAccount();
+  state.delete.busy = true;
+  paintDelete();
+
+  let jobsToRemove;
+  try {
+    jobsToRemove = (await listJobs()).filter((job) => job.accountId === accountId);
+  } catch (error) {
+    if (outdated(token)) return;
+    state.delete.busy = false;
+    toast(errorText(error), 'error');
+    paintDelete();
+    return;
+  }
+  if (outdated(token)) return;
+
+  for (const job of jobsToRemove) {
+    await removeJob(job.id);
+    if (outdated(token)) return;
+  }
+
+  let registry;
+  let sha;
+  try {
+    const file = await readFile(REGISTRY_PATH);
+    if (outdated(token)) return;
+    registry = parseRegistry(JSON.parse(file.content));
+    sha = file.sha;
+  } catch (error) {
+    if (outdated(token)) return;
+    state.delete.busy = false;
+    toast(errorText(error), 'error');
+    paintDelete();
+    return;
+  }
+
+  const newRegistry = removeAccount(registry, accountId);
+  try {
+    await writeFile(REGISTRY_PATH, `${JSON.stringify(newRegistry, null, 2)}\n`, {
+      message: `Удаление профиля ${accountId}`,
+      sha
+    });
+  } catch (error) {
+    if (outdated(token)) return;
+    state.delete.busy = false;
+    toast(errorText(error), 'error');
+    paintDelete();
+    return;
+  }
+  if (outdated(token)) return;
+
+  clearAccountCache(accountId);
+  clearActiveAccount();
+  toast('Профиль удалён.', 'stale');
+  navigate('#/login');
+}
+
 // ===== Карточка очереди ===================================================
 
 function buildJob(job) {
@@ -650,6 +1033,10 @@ async function reload() {
     state.confirmId = null;
   }
   paintQueue();
+  // Число несинхронизированных сессий в подтверждении удаления профиля
+  // обязано поспевать за очередью — иначе там мог остаться счётчик от
+  // заданий, которые сама же отправка уже сняла.
+  if (state.delete.confirming) paintDelete();
 }
 
 async function dropJob(id) {
@@ -690,6 +1077,9 @@ export async function render(root, params) {
     exportBusy: false,
     updateBusy: false,
     confirmId: null,
+    password: { current: '', next: '', busy: false, error: null },
+    profile: getAccountProfile(getActiveAccount()),
+    delete: { confirming: false, busy: false },
     unsubscribe: null,
     cleanups: new Set(),
     nodes: {}
@@ -713,13 +1103,25 @@ export async function render(root, params) {
   tools.setAttribute('aria-label', 'Обслуживание приложения');
   tools.append(exportCard, update);
 
+  const passwordCard = el('section', 'card settings-card settings-password');
+  state.nodes.password = passwordCard;
+
+  const bodyCard = el('section', 'card settings-card settings-body');
+  state.nodes.body = bodyCard;
+
+  const deleteCard = el('section', 'card settings-card settings-delete');
+  state.nodes.delete = deleteCard;
+
   const screen = el('div', 'settings-screen');
-  screen.append(tokenCard, usage, tools, queue);
+  screen.append(tokenCard, usage, tools, passwordCard, bodyCard, queue, deleteCard);
   root.replaceChildren(screen);
   paintToken();
   paintExport();
   paintQueue();
   paintUpdate();
+  paintPassword();
+  paintBody();
+  paintDelete();
 
   // Очередь меняется и без участия экрана: досылка по событию online.
   state.unsubscribe = onQueueChange(() => {

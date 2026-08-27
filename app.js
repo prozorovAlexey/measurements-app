@@ -1,7 +1,7 @@
 // Bootstrap + hash-роутер + монтирование экранов (§2 контракта).
 // Экраны грузятся динамическим import() — каркас не тянет их код заранее.
 
-import { bumpOpens, getActiveAccount, getThemeOverride, setThemeOverride } from './store.js';
+import { bumpOpens, clearAccountCache, clearActiveAccount, getActiveAccount, getLastLogin, getThemeOverride, migrateLegacyProfile, setThemeOverride } from './store.js';
 import { flush, listJobs } from './queue.js';
 
 const SCREENS = {
@@ -28,6 +28,8 @@ const subtitleEl = document.getElementById('screen-subtitle');
 const statusEl = document.getElementById('header-status');
 const toastHost = document.getElementById('toast-host');
 const themeToggleEl = document.getElementById('theme-toggle');
+const accountLabelEl = document.getElementById('account-label');
+const accountLogoutEl = document.getElementById('account-logout');
 const tabs = Array.from(document.querySelectorAll('.tabbar__item'));
 
 let currentModule = null;
@@ -150,6 +152,29 @@ if (darkMedia) {
 
 applyTheme();
 
+// --- Подпись профиля в шапке (T33) ----------------------------------------
+// Переключателя профилей нет (осознанное решение плана, §17 контракта) —
+// смена профиля это выход и вход. paintAccountBar() зовётся из router() на
+// каждый проход, чтобы подпись поспевала за входом/выходом без перезагрузки.
+
+function paintAccountBar() {
+  if (accountLabelEl) accountLabelEl.textContent = getLastLogin() ?? '';
+  const hidden = getActiveAccount() === null;
+  if (accountLabelEl) accountLabelEl.hidden = hidden;
+  if (accountLogoutEl) accountLogoutEl.hidden = hidden;
+}
+
+if (accountLogoutEl) {
+  accountLogoutEl.addEventListener('click', () => {
+    // Без подтверждения — действие обратимо повторным входом. Очередь и
+    // токен не трогаем: задания уже per-account (T30), токен общий на
+    // устройство (план, «Хранение на устройстве»).
+    clearAccountCache(getActiveAccount());
+    clearActiveAccount();
+    navigate('#/login');
+  });
+}
+
 export function setHeaderStatus(text, tone) {
   if (!statusEl) return;
   const value = typeof text === 'string' ? text.trim() : '';
@@ -259,6 +284,7 @@ async function mount(route) {
 }
 
 function router() {
+  paintAccountBar();
   const route = resolveRoute(location.hash);
   if (!route) {
     // Неизвестный хэш — дефолтный экран шпаргалки.
@@ -270,6 +296,9 @@ function router() {
   // кнопка «Назад» браузера или старая закладка не должны вернуть уже
   // вошедшего человека на форму логина.
   const account = getActiveAccount();
+  // Идемпотентно и дёшево (несколько чтений localStorage) — безопасно звать
+  // на каждый проход роутера, до любого чтения per-account кэша (T32).
+  if (account) migrateLegacyProfile(account);
   if (!account && route.name !== 'login') {
     navigate('#/login');
     return;

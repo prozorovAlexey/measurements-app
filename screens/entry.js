@@ -30,9 +30,9 @@
 
 import { navigate, toast } from '../app.js';
 import { accountDataDir, accountIndexPath } from '../accounts.js';
-import { readFile } from '../github.js';
+import { readFileOrNull } from '../github.js';
 import { enqueue, flush, isPersistent, listJobs } from '../queue.js';
-import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
+import { getAccountIndexCache, getActiveAccount, setAccountIndexCache } from '../store.js';
 import { getMeasurement, loadCatalog, protocolVersion } from '../catalog.js';
 import { buildSession, median, sessionFileName, validateReps } from '../session.js';
 
@@ -594,10 +594,12 @@ function outdated(token) {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(accountIndexPath(getActiveAccount()));
-    const data = JSON.parse(file.content);
+    // Пустой/несуществующий index.json (профиль без первой сессии) — не
+    // ошибка, а легитимно пустой индекс: сравнивать не с чем, но это не сбой.
+    const file = await readFileOrNull(accountIndexPath(getActiveAccount()));
+    const data = file ? JSON.parse(file.content) : {};
     if (outdated(token)) return;
-    setIndexCache(data);
+    setAccountIndexCache(getActiveAccount(), data);
     state.latest = latestMap(data);
     state.indexError = null;
   } catch (error) {
@@ -736,7 +738,7 @@ export async function render(root, params) {
   }
   if (token !== mountToken) return;
 
-  const cache = getIndexCache();
+  const cache = getAccountIndexCache(getActiveAccount());
   const now = new Date();
   state = {
     token,

@@ -157,6 +157,10 @@ const compareScreen = await import('./screens/compare.js');
 const figureScreen = await import('./screens/figure.js');
 const store = await import('./store.js');
 
+// T32: кэш index.json — per-account, экрану нужен активный профиль в
+// localStorage, иначе getActiveAccount() пуст и кэш читается/пишется в никуда.
+const ACCOUNT = 'alex';
+
 let passed = 0;
 let failed = 0;
 
@@ -201,7 +205,8 @@ const CMP_INDEX = {
 function seedStorage(index) {
   storage.clear();
   storage.set(store.KEYS.token, 'github_pat_fixture');
-  storage.set(store.KEYS.index, JSON.stringify({ data: index, fetchedAt: '2026-08-19T12:00:00Z' }));
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
+  store.setAccountIndexCache(ACCOUNT, index);
   githubReply = index;
 }
 

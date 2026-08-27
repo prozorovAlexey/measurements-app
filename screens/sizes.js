@@ -23,11 +23,11 @@ import {
   offFigureMeasurements,
   sizeMeasurements
 } from '../catalog.js';
-import { GitHubError, readFile } from '../github.js';
+import { GitHubError, readFileOrNull } from '../github.js';
 import { createSheetController, todayISO } from './figure.js';
 import { onQueueChange, pendingEntries } from '../queue.js';
 import { sizeFor } from '../sizes.js';
-import { bumpOpens, getActiveAccount, getIndexCache, getProfile, setIndexCache } from '../store.js';
+import { bumpOpens, getAccountIndexCache, getAccountProfile, getActiveAccount, setAccountIndexCache } from '../store.js';
 
 export const title = 'Размеры';
 
@@ -331,7 +331,7 @@ function paint() {
   const pending = state.pending;
   const slice = sliceAt(state.index, todayISO(), pending);
   state.slice = slice;
-  const sex = getProfile().sex;
+  const sex = getAccountProfile(getActiveAccount()).sex;
 
   nodes.push(buildSizeCards(slice, sex));
   nodes.push(buildOffList(state.offMeasurements, slice));
@@ -343,10 +343,12 @@ function paint() {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(accountIndexPath(getActiveAccount()));
-    const data = parseIndex(file.content);
+    // Пустой/несуществующий index.json (профиль без первой сессии) — не
+    // ошибка, а легитимно пустой индекс.
+    const file = await readFileOrNull(accountIndexPath(getActiveAccount()));
+    const data = file ? parseIndex(file.content) : {};
     if (outdated(token)) return;
-    setIndexCache(data);
+    setAccountIndexCache(getActiveAccount(), data);
     state.index = data;
     state.fetchedAt = new Date().toISOString();
     state.error = null;
@@ -412,7 +414,7 @@ export async function render(root, params) {
   window.removeEventListener('online', handleOnline);
   if (offQueue) { offQueue(); offQueue = null; }
 
-  const cache = getIndexCache();
+  const cache = getAccountIndexCache(getActiveAccount());
   const cachedCatalog = loadCachedCatalog();
   const mainHost = el('div', 'sizes-main');
   const sheetHost = el('div', 'sheet-host');

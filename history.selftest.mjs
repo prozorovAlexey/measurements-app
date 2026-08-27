@@ -241,12 +241,13 @@ await step('спарклайн разбит по версиям протокол
   const svg = byClass(root, 'sparkline')[0];
   assert.ok(svg, 'SVG не найден');
   assert.equal(svg.children.filter((node) => node.tagName === 'PATH').length, 2);
-  const cached = JSON.parse(storage.get('bm.index_cache'));
+  // T32: кэш index.json — per-account (bm.<id>.index_cache), не общий bm.index_cache.
+  const cached = JSON.parse(storage.get(`bm.${ACCOUNT}.index_cache`));
   assert.deepEqual(cached.data, index);
 });
 
 await step('cache-first: готовый спарклайн виден сразу при зависшей сети', async () => {
-  storage.set('bm.index_cache', JSON.stringify({ data: index, fetchedAt: '2026-08-15T09:30:00Z' }));
+  storage.set(`bm.${ACCOUNT}.index_cache`, JSON.stringify({ data: index, fetchedAt: '2026-08-15T09:30:00Z' }));
   hangGitHub = true;
   const root = createElement('div');
   const pending = history.render(root, { key: 'waist_who' });

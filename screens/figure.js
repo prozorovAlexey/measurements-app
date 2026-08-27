@@ -3,21 +3,21 @@
 // сессий и пишет быстрый ввод только через очередь.
 
 import { setHeaderStatus, setHeaderSubtitle, toast } from '../app.js';
-import { accountIndexPath } from '../accounts.js';
+import { accountIndexPath, accountProfilePath } from '../accounts.js';
 import { delta, sliceAt, sliceDates } from '../asof.js';
 import { figureMeasurements, getMeasurement, loadCachedCatalog, loadCatalog, protocolVersion } from '../catalog.js';
 import { silhouette } from '../figure.js';
-import { readFile } from '../github.js';
+import { GitHubError, readFileOrNull, writeFile } from '../github.js';
 import { enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntries } from '../queue.js';
 import { buildSession } from '../session.js';
 import { sparkline } from '../sparkline.js';
 import {
+  getAccountIndexCache,
+  getAccountProfile,
   getActiveAccount,
-  getIndexCache,
-  getProfile,
   getShowAllCallouts,
-  setIndexCache,
-  setProfile,
+  setAccountIndexCache,
+  setAccountProfile,
   setShowAllCallouts
 } from '../store.js';
 
@@ -551,6 +551,55 @@ function buildDateStrip(dates, selectedDate, pendingDates) {
   return section;
 }
 
+// Смена модели тела обязана долететь до repo B (второе устройство должно
+// увидеть тот же силуэт после входа), но локальный переключатель не должен
+// ждать сеть — запись в profile.json уходит best-effort в фоне, тем же
+// приёмом read-sha-write-retry-on-conflict, что и createAccount() в
+// login.js (T31): читаем свежий sha (профиль уже мог существовать), пишем,
+// на conflict — один перечитывающий повтор. Провал тихий (toast), локальное
+// состояние не откатывается — тот же терпимый к частичному провалу приём,
+// что уже есть у регистрации.
+async function writeRemoteProfile(accountId, sex) {
+  const path = accountProfilePath(accountId);
+  const body = `${JSON.stringify({ sex }, null, 2)}\n`;
+  const message = `Смена модели тела: ${sex}`;
+
+  let sha = null;
+  try {
+    const existing = await readFileOrNull(path);
+    sha = existing ? existing.sha : null;
+  } catch (error) {
+    toast(errorText(error), 'error');
+    return;
+  }
+
+  try {
+    await writeFile(path, body, { sha, message });
+    return;
+  } catch (error) {
+    if (!(error instanceof GitHubError) || error.kind !== 'conflict') {
+      toast(errorText(error), 'error');
+      return;
+    }
+  }
+
+  // Кто-то (другое устройство того же профиля) мог записать profile.json
+  // между нашим чтением и записью — перечитываем и повторяем один раз
+  // (без ветки «занято»: гонка по id здесь невозможна, id не меняется).
+  let fresh;
+  try {
+    fresh = await readFileOrNull(path);
+  } catch (error) {
+    toast(errorText(error), 'error');
+    return;
+  }
+  try {
+    await writeFile(path, body, { sha: fresh ? fresh.sha : null, message });
+  } catch (error) {
+    toast(errorText(error), 'error');
+  }
+}
+
 // Пол фигуры — сегментированная пилюля (T19), не <select>: то же визуальное
 // решение из макета, что и у .subtabs выше.
 function buildSexItem(label, sex, active) {
@@ -560,8 +609,10 @@ function buildSexItem(label, sex, active) {
   item.setAttribute('aria-checked', active ? 'true' : 'false');
   item.addEventListener('click', () => {
     if (state === null || state.profile.sex === sex) return;
-    state.profile = setProfile({ sex });
+    const accountId = getActiveAccount();
+    state.profile = setAccountProfile(accountId, { sex });
     paint();
+    void writeRemoteProfile(accountId, sex);
   });
   return item;
 }
@@ -1306,10 +1357,12 @@ function outdated(token) {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(accountIndexPath(getActiveAccount()));
-    const data = parseIndex(file.content);
+    // Свежесозданный профиль ещё не имеет index.json (Action его не собрал —
+    // первая сессия не отправлена) — это легитимно пустой индекс, а не ошибка.
+    const file = await readFileOrNull(accountIndexPath(getActiveAccount()));
+    const data = file ? parseIndex(file.content) : {};
     if (outdated(token)) return;
-    setIndexCache(data);
+    setAccountIndexCache(getActiveAccount(), data);
     state.index = data;
     state.error = null;
   } catch (error) {
@@ -1376,8 +1429,8 @@ export async function render(root, params) {
   window.removeEventListener('online', handleOnline);
   if (offQueue) { offQueue(); offQueue = null; }
   if (mountedRoot) mountedRoot.classList.remove('figure-screen');
-  const cache = getIndexCache();
-  const profile = getProfile();
+  const cache = getAccountIndexCache(getActiveAccount());
+  const profile = getAccountProfile(getActiveAccount());
   const cachedCatalog = loadCachedCatalog();
   mountedRoot = root;
   root.classList.add('figure-screen');

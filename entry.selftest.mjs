@@ -366,9 +366,8 @@ async function renderScreen(options = {}) {
   // монтирования экрана активный профиль уже есть — сеем его так же, как токен.
   storage.set(store.KEYS.activeAccount, ACCOUNT);
   if (token) storage.set(store.KEYS.token, token);
-  if (index) {
-    storage.set(store.KEYS.index, JSON.stringify({ data: index, fetchedAt: new Date().toISOString() }));
-  }
+  // T32: кэш index.json — per-account (bm.<id>.index_cache), не общий bm.index_cache.
+  if (index) store.setAccountIndexCache(ACCOUNT, index);
   indexReply = github;
   putReply = put;
   dataFiles = files.map((name) => ({ name, sha: `sha-${name}` }));
@@ -927,12 +926,14 @@ await step('чек-лист §10: в коде экрана нет ни одно�
   // С T6 экран вообще не пишет в repo B: единственный writeFile проекта
   // живёт в queue.js, и там же его сторожит queue.selftest.mjs.
   assert.equal((CODE.match(/writeFile\(/g) ?? []).length, 0, 'экран снова пишет в repo B мимо очереди');
-  assert.equal((CODE.match(/readFile\(/g) ?? []).length, 1, 'экран читает что-то ещё, кроме index.json профиля');
+  // T32: пустой/несуществующий index.json (профиль без первой сессии) — не
+  // ошибка, поэтому единственное чтение идёт через readFileOrNull, не readFile.
+  assert.equal((CODE.match(/readFileOrNull\(/g) ?? []).length, 1, 'экран читает что-то ещё, кроме index.json профиля');
+  assert.equal((CODE.match(/\breadFile\(/g) ?? []).length, 0, 'осталось голое readFile — пустой индекс снова будет падать в ошибку');
   assert.ok(
-    CODE.includes('readFile(accountIndexPath(getActiveAccount()))'),
-    'единственное чтение — не per-профильный index.json (T30, §17 контракта)'
+    CODE.includes('readFileOrNull(accountIndexPath(getActiveAccount()))'),
+    'единственное чтение — не per-профильный index.json (T30/T32, §17 контракта)'
   );
-  assert.ok(!/readFileOrNull/.test(CODE));
 });
 
 await step('§0: экран не знает про localStorage, innerHTML и внешние адреса', () => {

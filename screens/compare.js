@@ -18,10 +18,10 @@ import {
   loadCatalog,
   staticMeasurements
 } from '../catalog.js';
-import { GitHubError, readFile } from '../github.js';
+import { GitHubError, readFileOrNull } from '../github.js';
 import { figureSubtabs } from './figure.js';
 import { onQueueChange, pendingEntries } from '../queue.js';
-import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
+import { getAccountIndexCache, getActiveAccount, setAccountIndexCache } from '../store.js';
 
 export const title = 'Сравнение';
 
@@ -396,10 +396,12 @@ function paint() {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(accountIndexPath(getActiveAccount()));
-    const data = parseIndex(file.content);
+    // Пустой/несуществующий index.json (профиль без первой сессии) — не
+    // ошибка, а легитимно пустой индекс.
+    const file = await readFileOrNull(accountIndexPath(getActiveAccount()));
+    const data = file ? parseIndex(file.content) : {};
     if (outdated(token)) return;
-    setIndexCache(data);
+    setAccountIndexCache(getActiveAccount(), data);
     state.index = data;
     state.error = null;
   } catch (error) {
@@ -465,7 +467,7 @@ export async function render(root, params) {
   window.removeEventListener('online', handleOnline);
   if (offQueue) { offQueue(); offQueue = null; }
 
-  const cache = getIndexCache();
+  const cache = getAccountIndexCache(getActiveAccount());
   const cachedCatalog = loadCachedCatalog();
   const mainHost = el('div', 'compare-main');
   root.append(mainHost);

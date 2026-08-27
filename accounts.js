@@ -112,6 +112,21 @@ export function upsertAccount(registry, account) {
   return { version, accounts };
 }
 
+// -> НОВЫЙ объект реестра, из которого убрана запись с этим id. Симметричен
+// upsertAccount: вход не мутируется (filter, не splice на месте), результат
+// заменяет объект целиком. Неизвестный id — реестр без изменений состава,
+// но всё равно новый объект (T34, план accounts-plan-T28-T35.md).
+export function removeAccount(registry, id) {
+  const base = isPlainObject(registry) ? registry : {};
+  const version = Number.isInteger(base.version) && base.version >= 1 ? base.version : 1;
+  const list = Array.isArray(base.accounts) ? base.accounts : [];
+  const target = typeof id === 'string' ? id : '';
+
+  const accounts = list.filter((item) => !(isPlainObject(item) && item.id === target));
+
+  return { version, accounts };
+}
+
 // ===== Пароль: PBKDF2-SHA-256 ==============================================
 
 const PBKDF2_ITERATIONS = 100000;
