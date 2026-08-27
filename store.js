@@ -11,7 +11,12 @@ export const KEYS = {
   opensV2: 'bm.opens', // T15 — { sizes: {count,lastAt}, app: {count,lastAt} }
   profile: 'bm.profile', // { sex: 'male' | 'female' }
   theme: 'bm.theme', // 'light' | 'dark' — T17. Отсутствие ключа = системная тема.
-  showAllCallouts: 'bm.show_all_callouts' // 'true' | 'false' — T19. Отсутствие ключа = true.
+  showAllCallouts: 'bm.show_all_callouts', // 'true' | 'false' — T19. Отсутствие ключа = true.
+  activeAccount: 'bm.active_account', // T28 — id вошедшего профиля
+  lastLogin: 'bm.last_login', // T28 — label для подстановки в поле логина
+  accountsCache: 'bm.accounts_cache' // T28 — { data, fetchedAt }, офлайн-копия accounts.json
+  // Per-account ключи (bm.<id>.index_cache, bm.<id>.profile) строятся
+  // хелпером accountKey() ниже: id неизвестен на этапе объявления констант.
 };
 
 const DEFAULT_REPO = Object.freeze({
@@ -77,6 +82,17 @@ function isPlainObject(value) {
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+// 'bm.<id>.<suffix>' — namespacing per-account ключей (T28). accountId здесь
+// не более чем непустая строка после trim: логин уже проверен accounts.js
+// на предыдущем шаге, store.js про правила логина ничего не знает (§3
+// контракта — этот модуль отвечает только за localStorage). Невалидный
+// accountId -> null, и вызывающие геттеры/сеттеры ниже читают это как
+// «профиля нет» / «записать некуда».
+function accountKey(accountId, suffix) {
+  const id = typeof accountId === 'string' ? accountId.trim() : '';
+  return id === '' ? null : `bm.${id}.${suffix}`;
 }
 
 // --- Токен ---------------------------------------------------------------
@@ -263,4 +279,135 @@ export function setShowAllCallouts(value) {
   const next = value !== false;
   writeRaw(KEYS.showAllCallouts, next ? 'true' : 'false');
   return next;
+}
+
+// --- Система аккаунтов (T28) -----------------------------------------------
+// Токен, конфиг репозитория, тема и счётчики opens остаются общими на
+// устройство (план «Хранение на устройстве») — этот модуль лишь добавляет
+// то, что различается по вошедшему профилю: реестр-кэш, активный профиль
+// и per-account копии index.json/profile.json.
+
+// Офлайн-копия accounts.json — вход должен работать без сети, если реестр
+// уже когда-то читался (см. план, «bm.accounts_cache»).
+export function getAccountsCache() {
+  const stored = readJSON(KEYS.accountsCache);
+  if (!isPlainObject(stored)) return null;
+  if (!('data' in stored) || stored.data === undefined) return null;
+  if (!nonEmptyString(stored.fetchedAt)) return null;
+  return { data: stored.data, fetchedAt: stored.fetchedAt };
+}
+
+export function setAccountsCache(data) {
+  const entry = { data, fetchedAt: new Date().toISOString() };
+  const ok = writeJSON(KEYS.accountsCache, entry);
+  return ok ? entry : null;
+}
+
+// --- Активный профиль --------------------------------------------------
+
+export function getActiveAccount() {
+  const raw = readRaw(KEYS.activeAccount);
+  return nonEmptyString(raw) ? raw.trim() : null;
+}
+
+export function setActiveAccount(id) {
+  if (!nonEmptyString(id)) return false;
+  return writeRaw(KEYS.activeAccount, id.trim());
+}
+
+export function clearActiveAccount() {
+  return removeRaw(KEYS.activeAccount);
+}
+
+// --- Последний логин (подставляется в поле при следующем входе) --------
+
+export function getLastLogin() {
+  const raw = readRaw(KEYS.lastLogin);
+  return nonEmptyString(raw) ? raw.trim() : null;
+}
+
+export function setLastLogin(label) {
+  if (!nonEmptyString(label)) return false;
+  return writeRaw(KEYS.lastLogin, label.trim());
+}
+
+// --- Кэш index.json и profile.json по активному профилю -----------------
+
+export function getAccountIndexCache(accountId) {
+  const key = accountKey(accountId, 'index_cache');
+  if (key === null) return null;
+  const stored = readJSON(key);
+  if (!isPlainObject(stored)) return null;
+  if (!('data' in stored) || stored.data === undefined) return null;
+  if (!nonEmptyString(stored.fetchedAt)) return null;
+  return { data: stored.data, fetchedAt: stored.fetchedAt };
+}
+
+export function setAccountIndexCache(accountId, data) {
+  const key = accountKey(accountId, 'index_cache');
+  if (key === null) return false;
+  const entry = { data, fetchedAt: new Date().toISOString() };
+  const ok = writeJSON(key, entry);
+  return ok ? entry : false;
+}
+
+export function getAccountProfile(accountId) {
+  const key = accountKey(accountId, 'profile');
+  if (key === null) return { ...DEFAULT_PROFILE };
+  const stored = readJSON(key);
+  if (!isPlainObject(stored)) return { ...DEFAULT_PROFILE };
+  return { sex: stored.sex === 'female' ? 'female' : 'male' };
+}
+
+export function setAccountProfile(accountId, profile) {
+  const key = accountKey(accountId, 'profile');
+  if (key === null) return false;
+  const next = {
+    sex: isPlainObject(profile) && profile.sex === 'female' ? 'female' : 'male'
+  };
+  writeJSON(key, next);
+  return next;
+}
+
+// Для «Выйти» (T33) — здесь только определяется, T28–T31 её не вызывают.
+export function clearAccountCache(accountId) {
+  const indexKey = accountKey(accountId, 'index_cache');
+  const profileKey = accountKey(accountId, 'profile');
+  if (indexKey === null || profileKey === null) return false;
+  removeRaw(indexKey);
+  removeRaw(profileKey);
+  return true;
+}
+
+// -> boolean (перенесло ли что-то). Переносит (копирует и удаляет старый
+// ключ) bm.index_cache -> bm.<id>.index_cache и bm.profile -> bm.<id>.profile
+// независимо друг от друга, только если новый ключ ещё не занят. Идемпотентно:
+// второй вызов не находит, что переносить, и возвращает false. КОГДА это
+// вызывать (для кого) решает не store.js, а код T31/T32 — здесь только примитив.
+export function migrateLegacyProfile(accountId) {
+  const indexKey = accountKey(accountId, 'index_cache');
+  const profileKey = accountKey(accountId, 'profile');
+  if (indexKey === null || profileKey === null) return false;
+
+  let moved = false;
+
+  if (readRaw(indexKey) === null) {
+    const legacy = readRaw(KEYS.index);
+    if (legacy !== null) {
+      writeRaw(indexKey, legacy);
+      removeRaw(KEYS.index);
+      moved = true;
+    }
+  }
+
+  if (readRaw(profileKey) === null) {
+    const legacy = readRaw(KEYS.profile);
+    if (legacy !== null) {
+      writeRaw(profileKey, legacy);
+      removeRaw(KEYS.profile);
+      moved = true;
+    }
+  }
+
+  return moved;
 }
