@@ -18,16 +18,27 @@
 // означает, что предыдущая попытка на самом деле доехала, а ответ потерялся
 // по дороге, — задание просто снимается с очереди.
 
+import { accountDataDir } from './accounts.js';
 import { GitHubError, listFiles, writeFile } from './github.js';
 import { sessionFileName } from './session.js';
 
 const DB_NAME = 'bm-queue';
 const DB_VERSION = 1;
 const STORE = 'jobs';
-const DATA_DIR = 'data';
 
 // 'data/2026-08-14--2.json' -> день сессии, по нему подбирается свободное имя.
 const SESSION_NAME = /^(\d{4}-\d{2}-\d{2})(?:--\d+)?\.json$/i;
+
+// 'accounts/alex/data/2026-08-14.json' -> 'alex'. Путь — единственный источник
+// истины про то, какому профилю принадлежит задание: он строится вызывающим
+// кодом (accounts.accountDataDir()) и дальше не расходится с accountId,
+// потому что accountId выводится обратно из того же самого пути (T30, §17
+// контракта: «путь и аккаунт не могут разойтись»).
+const ACCOUNT_PATH = /^accounts\/([^/]+)\/data\//;
+function accountIdFromPath(path) {
+  const match = ACCOUNT_PATH.exec(String(path));
+  return match ? match[1] : null;
+}
 
 // ===== Хранилище ==========================================================
 // Бэкенд выбирается один раз за загрузку страницы: либо IndexedDB, либо
@@ -169,7 +180,11 @@ export async function enqueue(job) {
     message: requireText(source.message, 'текст коммита'),
     createdAt: new Date().toISOString(),
     status: 'pending',
-    lastError: null
+    lastError: null,
+    // Выведен из path, а не передан отдельным аргументом: enqueue() не меняет
+    // сигнатуру (T30, §17 контракта), а вызывающий код (entry.js, enqueueEntry
+    // ниже) уже строит account-scoped путь сам.
+    accountId: accountIdFromPath(source.path)
   };
   const id = await insert(record);
   notify();
@@ -208,12 +223,16 @@ function currentTimeStamp() {
 }
 
 // entry: { key, raw, value, unit, protocol_version, note } — одна запись §6.1.
-// Существующее неотправленное задание того же дня получает ещё одну запись
-// в content.entries (повторный ключ заменяется последним значением — шторку
-// открывают дважды, когда ошиблись, и это не два разных замера). Иначе
-// заводится новое задание с минимальной сессией быстрого ввода: условия
-// шторка не спрашивает никогда (§7.5 спеки), поэтому здесь всегда дефолты.
-export async function enqueueEntry({ date, entry, message }) {
+// accountId обязателен (T30, §17 контракта): без него два профиля на одном
+// устройстве, записывающие в один день, слились бы в один файл сессии.
+// Существующее неотправленное задание того же дня И того же аккаунта
+// получает ещё одну запись в content.entries (повторный ключ заменяется
+// последним значением — шторку открывают дважды, когда ошиблись, и это не
+// два разных замера). Иначе заводится новое задание с минимальной сессией
+// быстрого ввода: условия шторка не спрашивает никогда (§7.5 спеки), поэтому
+// здесь всегда дефолты.
+export async function enqueueEntry({ accountId, date, entry, message }) {
+  const account = requireText(accountId, 'аккаунт');
   const day = requireText(date, 'дата записи');
   if (!entry || typeof entry !== 'object' || typeof entry.key !== 'string' || entry.key.trim() === '') {
     throw new Error('Внутренняя ошибка очереди: запись замера не задана.');
@@ -224,6 +243,9 @@ export async function enqueueEntry({ date, entry, message }) {
   let target = null;
   for (const job of await listJobs()) {
     if (job.status === 'sending') continue;
+    // Чужой профиль не подходит под склейку, даже если дата совпала:
+    // два аккаунта на одном устройстве не должны схлопнуться в один файл.
+    if (job.accountId !== account) continue;
     let parsed;
     try {
       parsed = JSON.parse(job.content);
@@ -252,22 +274,26 @@ export async function enqueueEntry({ date, entry, message }) {
     entries: [record]
   };
   return enqueue({
-    path: `${DATA_DIR}/${sessionFileName(day, [])}`,
+    path: `${accountDataDir(account)}/${sessionFileName(day, [])}`,
     content: JSON.stringify(session, null, 2),
     message: commitMessage
   });
 }
 
 // -> { '<date>': { '<key>': { value, protocol_version, jobId, status } } }
-// Только задания, ещё лежащие в очереди — отправленное снимается с неё,
+// accountId обязателен (T30, §17 контракта): только задания этого профиля,
+// ещё лежащие в очереди — иначе оверлей на кадр показал бы чужие
+// незаписанные значения. Отправленное задание снимается с очереди,
 // а его данные приходят к экрану уже через index.json. Питает оверлей среза
 // в asof.js: без него чип сегодняшней даты и значение из шторки не появились
 // бы до пересборки index.json Action'ом (30–60 с) и не появились бы вовсе
 // в офлайне (§7.5 спеки).
-export async function pendingEntries() {
+export async function pendingEntries(accountId) {
+  const account = requireText(accountId, 'аккаунт');
   const byDate = new Map();
 
   for (const job of await listJobs()) {
+    if (job.accountId !== account) continue;
     let parsed;
     try {
       parsed = JSON.parse(job.content);

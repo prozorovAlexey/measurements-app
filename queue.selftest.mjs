@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
+import { accountDataDir } from './accounts.js';
+
 // ===== Заглушка IndexedDB =================================================
 
 function fakeRequest(run) {
@@ -109,6 +111,12 @@ globalThis.localStorage = {
 
 const TOKEN = 'github_pat_fixture';
 const DAY = '2026-08-14';
+// 'alex' — уже реальный мигрированный аккаунт в data-репозитории (T29);
+// 'tanya' — фикстура второго профиля для тестов, специально проверяющих
+// межпрофильную изоляцию (T30).
+const ACCOUNT = 'alex';
+const OTHER_ACCOUNT = 'tanya';
+const DIR = accountDataDir(ACCOUNT);
 
 const calls = [];
 let dataFiles = [];
@@ -153,7 +161,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (listReply.kind === 'offline') throw new TypeError('сети нет (заглушка теста)');
   if (listReply.kind === 'status') return failureReply(listReply.status);
   return jsonReply(dataFiles.map((file) => ({
-    type: 'file', name: file.name, path: `data/${file.name}`, sha: file.sha, size: 10
+    type: 'file', name: file.name, path: `${DIR}/${file.name}`, sha: file.sha, size: 10
   })));
 };
 
@@ -187,7 +195,7 @@ function sessionText(value) {
 }
 
 function job(value, name = `${DAY}.json`) {
-  return { path: `data/${name}`, content: sessionText(value), message: `Сессия ${DAY} 09:12` };
+  return { path: `${DIR}/${name}`, content: sessionText(value), message: `Сессия ${DAY} 09:12` };
 }
 
 async function reset(options = {}) {
@@ -228,11 +236,12 @@ await step('§7: у задания ровно поля контракта, ст�
   assert.equal(jobs.length, 1);
   assert.deepEqual(
     Object.keys(jobs[0]).sort(),
-    ['content', 'createdAt', 'id', 'lastError', 'message', 'path', 'status'].sort()
+    ['accountId', 'content', 'createdAt', 'id', 'lastError', 'message', 'path', 'status'].sort()
   );
   assert.equal(jobs[0].id, id);
   assert.equal(jobs[0].status, 'pending');
   assert.equal(jobs[0].lastError, null);
+  assert.equal(jobs[0].accountId, ACCOUNT, 'T30: accountId обязан вывестись из account-scoped пути');
   assert.match(jobs[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 
@@ -244,7 +253,7 @@ await step('порядок FIFO: что поставили первым, то п
   assert.deepEqual(jobs.map((item) => item.id).sort((a, b) => a - b), jobs.map((item) => item.id));
 
   await queue.flush();
-  assert.deepEqual(wrote(), [`data/${DAY}.json`, `data/${DAY}--2.json`], 'порядок отправки нарушен');
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`, `${DIR}/${DAY}--2.json`], 'порядок отправки нарушен');
   assert.equal(JSON.parse(bodyText(puts()[0])).entries[0].value, 86.8, 'первым ушло не первое задание');
 });
 
@@ -263,7 +272,7 @@ await step('flush отправляет и снимает задание с оч�
   const result = await queue.flush();
 
   assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
-  assert.deepEqual(wrote(), [`data/${DAY}.json`]);
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`]);
   assert.deepEqual(await queue.listJobs(), [], 'отправленное задание осталось в очереди');
   assert.equal(JSON.parse(bodyText(puts()[0])).entries[0].value, 86.8);
 });
@@ -290,7 +299,7 @@ await step('§6.1: имя занято чужим устройством — с�
   await queue.enqueue(job(86.8));
   await queue.flush();
 
-  assert.deepEqual(wrote(), [`data/${DAY}--2.json`]);
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}--2.json`]);
 });
 
 await step('имя свободно — используется как есть, без --N', async () => {
@@ -298,7 +307,7 @@ await step('имя свободно — используется как есть
   await queue.enqueue(job(86.8));
   await queue.flush();
 
-  assert.deepEqual(wrote(), [`data/${DAY}.json`]);
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`]);
 });
 
 await step('повтор не размножает сессию: содержимое уже лежит в data/', async () => {
@@ -306,7 +315,7 @@ await step('повтор не размножает сессию: содержи�
   const content = sessionText(86.8);
   // Предыдущая попытка доехала, но ответ потерялся: файл в репозитории есть.
   dataFiles = [{ name: `${DAY}.json`, sha: await queue.blobSha(content) }];
-  await queue.enqueue({ path: `data/${DAY}.json`, content, message: 'Сессия' });
+  await queue.enqueue({ path: `${DIR}/${DAY}.json`, content, message: 'Сессия' });
   const result = await queue.flush();
 
   assert.deepEqual(puts(), [], 'сессия записана вторым файлом');
@@ -320,7 +329,7 @@ await step('два одинаковых задания в одном прого�
   await queue.enqueue(job(86.8));
   const result = await queue.flush();
 
-  assert.deepEqual(wrote(), [`data/${DAY}.json`], 'одна и та же сессия записана дважды');
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`], 'одна и та же сессия записана дважды');
   assert.equal(result.sent, 2, 'дубль должен считаться доставленным, а не провалившимся');
   assert.deepEqual(await queue.listJobs(), []);
 });
@@ -351,7 +360,7 @@ await step('листинг каталога — один на прогон, а �
   await queue.flush();
 
   assert.equal(gets().length, 1, `листингов ${gets().length}`);
-  assert.equal(gets()[0].path, 'data');
+  assert.equal(gets()[0].path, DIR);
 });
 
 // ===== Ошибки =============================================================
@@ -374,7 +383,7 @@ await step('сеть вернулась — то же задание доезж�
   const result = await queue.flush();
 
   assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
-  assert.deepEqual(wrote(), [`data/${DAY}.json`]);
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`]);
   assert.deepEqual(await queue.listJobs(), []);
 });
 
@@ -439,7 +448,7 @@ await step('провал одного задания не отменяет от�
   globalThis.fetch = async (url, init = {}) => {
     if (String(init.method).toUpperCase() === 'PUT' && first) {
       first = false;
-      calls.push({ method: 'PUT', path: 'data/провал', body: null });
+      calls.push({ method: 'PUT', path: `${DIR}/провал`, body: null });
       return failureReply(500);
     }
     return original(url, init);
@@ -476,7 +485,7 @@ await step('два flush подряд не отправляют сессию д�
   await queue.enqueue(job(86.8));
   const [a, b] = await Promise.all([queue.flush(), queue.flush()]);
 
-  assert.deepEqual(wrote(), [`data/${DAY}.json`], `записей ${wrote().length}`);
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`], `записей ${wrote().length}`);
   assert.equal(a.sent + b.sent, 1, 'сессия посчитана отправленной дважды');
   assert.deepEqual(await queue.listJobs(), []);
 });
@@ -501,6 +510,7 @@ function entryFixture(key, value, overrides = {}) {
 await step('T14: enqueueEntry на новый день заводит одно задание с минимальной сессией', async () => {
   await reset();
   const id = await queue.enqueueEntry({
+    accountId: ACCOUNT,
     date: DAY,
     entry: entryFixture('waist_who', 86),
     message: 'Быстрый ввод'
@@ -508,7 +518,7 @@ await step('T14: enqueueEntry на новый день заводит одно �
   const jobs = await queue.listJobs();
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].id, id);
-  assert.equal(jobs[0].path, `data/${DAY}.json`);
+  assert.equal(jobs[0].path, `${DIR}/${DAY}.json`);
 
   const parsed = JSON.parse(jobs[0].content);
   assert.equal(parsed.date, DAY);
@@ -523,7 +533,7 @@ await step('T14: восемь значений одного дня, внесён
   const keys = ['waist_who', 'hip', 'chest', 'neck', 'thigh', 'calf', 'wrist', 'weight'];
   let lastId = null;
   for (const key of keys) {
-    lastId = await queue.enqueueEntry({ date: DAY, entry: entryFixture(key, 50), message: `Быстрый ввод: ${key}` });
+    lastId = await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture(key, 50), message: `Быстрый ввод: ${key}` });
   }
 
   const jobs = await queue.listJobs();
@@ -535,14 +545,14 @@ await step('T14: восемь значений одного дня, внесён
 
   const result = await queue.flush();
   assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
-  assert.deepEqual(wrote(), [`data/${DAY}.json`], 'восемь значений обязаны доехать одним файлом');
+  assert.deepEqual(wrote(), [`${DIR}/${DAY}.json`], 'восемь значений обязаны доехать одним файлом');
   assert.equal(JSON.parse(bodyText(puts()[0])).entries.length, 8);
 });
 
 await step('T14: повторный ключ в пределах одного задания заменяется последним значением', async () => {
   await reset();
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 87), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 87), message: 'Быстрый ввод' });
 
   const jobs = await queue.listJobs();
   assert.equal(jobs.length, 1);
@@ -553,20 +563,20 @@ await step('T14: повторный ключ в пределах одного з
 
 await step('T14: другой день не трогает задание прошлого дня', async () => {
   await reset();
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
-  await queue.enqueueEntry({ date: '2026-08-15', entry: entryFixture('waist_who', 90), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: '2026-08-15', entry: entryFixture('waist_who', 90), message: 'Быстрый ввод' });
 
   assert.equal((await queue.listJobs()).length, 2, 'разные дни обязаны остаться разными заданиями');
 });
 
 await step('T14: задание failed всё ещё принимает довесок — само не поменяет статус', async () => {
   await reset({ token: null });
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
   await queue.flush();
   assert.equal((await queue.listJobs())[0].status, 'failed');
 
   storage.set(store.KEYS.token, TOKEN);
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
   const jobs = await queue.listJobs();
   assert.equal(jobs.length, 1, 'провалившееся задание — не повод заводить отдельный файл');
   assert.equal(JSON.parse(jobs[0].content).entries.length, 2);
@@ -576,7 +586,7 @@ await step('T14: задание failed всё ещё принимает дове
 
 await step('T14: задание в статусе sending не получает довесок — уходит в отдельный файл', async () => {
   await reset();
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
 
   // Первый PUT искусственно зависает, чтобы поймать задание в статусе sending —
   // ровно тот момент, когда его исходящая запись уже может быть в пути (§7 контракта).
@@ -594,7 +604,7 @@ await step('T14: задание в статусе sending не получает 
   assert.ok(releasePut, 'первый PUT не завис — тест не поймал состояние sending');
   assert.equal((await queue.listJobs())[0].status, 'sending');
 
-  await queue.enqueueEntry({ date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
   assert.equal((await queue.listJobs()).length, 2, 'sending-задание не должно получать довесок');
 
   releasePut();
@@ -602,21 +612,93 @@ await step('T14: задание в статусе sending не получает 
   globalThis.fetch = original;
   await queue.flush();
 
-  assert.deepEqual(wrote().sort(), [`data/${DAY}--2.json`, `data/${DAY}.json`]);
+  assert.deepEqual(wrote().sort(), [`${DIR}/${DAY}--2.json`, `${DIR}/${DAY}.json`]);
   assert.deepEqual(await queue.listJobs(), []);
 });
 
 await step('pendingEntries: форма по дате и ключу, снимается вместе с отправкой', async () => {
   await reset();
-  const id = await queue.enqueueEntry({ date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
-  await queue.enqueueEntry({ date: '2026-08-15', entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
+  const id = await queue.enqueueEntry({ accountId: ACCOUNT, date: DAY, entry: entryFixture('waist_who', 86), message: 'Быстрый ввод' });
+  await queue.enqueueEntry({ accountId: ACCOUNT, date: '2026-08-15', entry: entryFixture('hip', 96), message: 'Быстрый ввод' });
 
-  const pending = await queue.pendingEntries();
+  const pending = await queue.pendingEntries(ACCOUNT);
   assert.deepEqual(Object.keys(pending).sort(), ['2026-08-15', DAY].sort());
   assert.deepEqual(pending[DAY].waist_who, { value: 86, protocol_version: 1, jobId: id, status: 'pending' });
 
   await queue.flush();
-  assert.deepEqual(await queue.pendingEntries(), {}, 'отправленные задания не должны оставаться в оверлее');
+  assert.deepEqual(await queue.pendingEntries(ACCOUNT), {}, 'отправленные задания не должны оставаться в оверлее');
+});
+
+await step('T30: enqueueEntry с разными accountId на одну дату не склеиваются в один файл', async () => {
+  await reset();
+  const idAlex = await queue.enqueueEntry({
+    accountId: ACCOUNT,
+    date: DAY,
+    entry: entryFixture('waist_who', 86),
+    message: 'Быстрый ввод'
+  });
+  const idTanya = await queue.enqueueEntry({
+    accountId: OTHER_ACCOUNT,
+    date: DAY,
+    entry: entryFixture('waist_who', 90),
+    message: 'Быстрый ввод'
+  });
+
+  assert.notEqual(idAlex, idTanya, 'два профиля на одну дату слиплись в одно задание');
+  const jobs = await queue.listJobs();
+  assert.equal(jobs.length, 2, 'разные профили на одну дату обязаны остаться разными заданиями');
+
+  const jobAlex = jobs.find((item) => item.id === idAlex);
+  const jobTanya = jobs.find((item) => item.id === idTanya);
+  assert.equal(jobAlex.accountId, ACCOUNT);
+  assert.equal(jobTanya.accountId, OTHER_ACCOUNT);
+  assert.equal(jobAlex.path, `${DIR}/${DAY}.json`, 'задание alex обязано лежать в своей accounts/<id>/data/');
+  assert.equal(
+    jobTanya.path,
+    `${accountDataDir(OTHER_ACCOUNT)}/${DAY}.json`,
+    'задание tanya обязано лежать в своей accounts/<id>/data/, а не в чужой'
+  );
+});
+
+await step('T30: pendingEntries не показывает записи чужого профиля на ту же дату', async () => {
+  await reset();
+  await queue.enqueueEntry({
+    accountId: ACCOUNT,
+    date: DAY,
+    entry: entryFixture('waist_who', 86),
+    message: 'Быстрый ввод'
+  });
+  await queue.enqueueEntry({
+    accountId: OTHER_ACCOUNT,
+    date: DAY,
+    entry: entryFixture('waist_who', 90),
+    message: 'Быстрый ввод'
+  });
+
+  const pendingAlex = await queue.pendingEntries(ACCOUNT);
+  const pendingTanya = await queue.pendingEntries(OTHER_ACCOUNT);
+  assert.equal(pendingAlex[DAY].waist_who.value, 86, 'у alex не своё значение');
+  assert.equal(pendingTanya[DAY].waist_who.value, 90, 'у tanya не своё значение');
+  assert.notEqual(
+    pendingAlex[DAY].waist_who.value,
+    pendingTanya[DAY].waist_who.value,
+    'оверлей одного профиля утёк в оверлей другого'
+  );
+});
+
+await step('T30: голый enqueue() с account-scoped путём выводит accountId сам', async () => {
+  await reset();
+  const id = await queue.enqueue({
+    path: `${DIR}/${DAY}.json`,
+    content: sessionText(86.8),
+    message: `Сессия ${DAY} 09:12`
+  });
+  const jobs = await queue.listJobs();
+  assert.equal(
+    jobs.find((item) => item.id === id).accountId,
+    ACCOUNT,
+    'enqueue() (путь полной сессии из entry.js) обязан вывести accountId из пути без явного аргумента'
+  );
 });
 
 // ===== Сторожа инвариантов ================================================

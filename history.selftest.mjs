@@ -6,6 +6,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 
+import { accountDataDir, accountIndexPath } from './accounts.js';
+
+// 'alex' — уже реальный мигрированный аккаунт в data-репозитории (T29).
+const ACCOUNT = 'alex';
+const INDEX_PATH = accountIndexPath(ACCOUNT);
+const DIR = accountDataDir(ACCOUNT);
+
 function createElement(tag) {
   const classes = new Set();
   const listeners = new Map();
@@ -105,7 +112,7 @@ globalThis.document = {
 };
 globalThis.location = { hash: '#/unknown' };
 
-const storage = new Map([['bm.token', 'github_pat_fixture']]);
+const storage = new Map([['bm.token', 'github_pat_fixture'], ['bm.active_account', ACCOUNT]]);
 globalThis.localStorage = {
   getItem: (key) => storage.get(String(key)) ?? null,
   setItem: (key, value) => { storage.set(String(key), String(value)); },
@@ -125,7 +132,7 @@ const index = {
   }
 };
 const sessions = new Map([
-  ['data/2026-08-14.json', JSON.stringify({
+  ['accounts/alex/data/2026-08-14.json', JSON.stringify({
     date: '2026-08-14',
     time: '09:12',
     protocol_version: 1,
@@ -138,7 +145,7 @@ const sessions = new Map([
       note: ''
     }]
   })],
-  ['data/2026-08-15.json', JSON.stringify({
+  ['accounts/alex/data/2026-08-15.json', JSON.stringify({
     date: '2026-08-15',
     time: '09:20',
     protocol_version: 2,
@@ -183,8 +190,8 @@ globalThis.fetch = async (url) => {
   const target = new URL(String(url));
   const path = decodeURIComponent(target.pathname.split('/contents/')[1] ?? '');
   calls.push(path);
-  if (path === 'index.json') return fileReply(JSON.stringify(activeIndex), path);
-  if (path === 'data') {
+  if (path === INDEX_PATH) return fileReply(JSON.stringify(activeIndex), path);
+  if (path === DIR) {
     return jsonReply(Array.from(sessions, ([filePath, content]) => ({
       type: 'file',
       name: filePath.split('/').at(-1),
@@ -266,13 +273,13 @@ await step('lagging index: финальный граф строится из с�
 });
 
 await step('absent/invalid raw не фабрикуется из value и показывается прочерком', async () => {
-  sessions.set('data/2026-08-16.json', JSON.stringify({
+  sessions.set('accounts/alex/data/2026-08-16.json', JSON.stringify({
     date: '2026-08-16',
     time: '09:20',
     protocol_version: 2,
     entries: [{ key: 'waist_who', value: 86.1, unit: 'cm', protocol_version: 2 }]
   }));
-  sessions.set('data/2026-08-17.json', JSON.stringify({
+  sessions.set('accounts/alex/data/2026-08-17.json', JSON.stringify({
     date: '2026-08-17',
     time: '09:20',
     protocol_version: 2,
@@ -282,8 +289,8 @@ await step('absent/invalid raw не фабрикуется из value и пок�
   await history.render(root, { key: 'waist_who' });
   const repeats = byClass(root, 'history-table__reps');
   assert.deepEqual(repeats.slice(0, 2).map((node) => node.textContent), ['—', '—']);
-  sessions.delete('data/2026-08-16.json');
-  sessions.delete('data/2026-08-17.json');
+  sessions.delete('accounts/alex/data/2026-08-16.json');
+  sessions.delete('accounts/alex/data/2026-08-17.json');
 });
 
 await step('protocol_version нормализован одинаково; валидные версии не склеены', async () => {
@@ -294,7 +301,7 @@ await step('protocol_version нормализован одинаково; вал
     ['2026-08-19', 3]
   ];
   for (const [date, protocol] of fixtures) {
-    sessions.set(`data/${date}.json`, JSON.stringify({
+    sessions.set(`accounts/alex/data/${date}.json`, JSON.stringify({
       date,
       time: '09:20',
       protocol_version: protocol,
@@ -311,11 +318,11 @@ await step('protocol_version нормализован одинаково; вал
   const tableProtocols = byClass(root, 'history-table__protocol').map((node) => node.textContent);
   assert.ok(tableProtocols.filter((value) => value === 'v?').length >= 3, tableProtocols.join(','));
   assert.ok(textOf(root).includes('v?'), 'легенда использует другую нормализацию');
-  for (const [date] of fixtures) sessions.delete(`data/${date}.json`);
+  for (const [date] of fixtures) sessions.delete(`accounts/alex/data/${date}.json`);
 });
 
 await step('числа форматируются вручную с запятой, без ICU', async () => {
-  sessions.set('data/2026-08-16.json', JSON.stringify({
+  sessions.set('accounts/alex/data/2026-08-16.json', JSON.stringify({
     date: '2026-08-16',
     time: '09:20',
     protocol_version: 2,
@@ -326,44 +333,44 @@ await step('числа форматируются вручную с запято
   assert.ok(textOf(root).includes('86,25'), textOf(root));
   const source = readFileSync(new URL('./screens/history.js', import.meta.url), 'utf8');
   assert.ok(!/toLocaleString/.test(source), 'формат зависит от ICU');
-  sessions.delete('data/2026-08-16.json');
+  sessions.delete('accounts/alex/data/2026-08-16.json');
 });
 
 await step('битый/нечитаемый файл не уничтожает валидные строки', async () => {
-  sessions.set('data/2026-08-16.json', '{битый json');
-  sessions.set('data/2026-08-17.json', JSON.stringify({
+  sessions.set('accounts/alex/data/2026-08-16.json', '{битый json');
+  sessions.set('accounts/alex/data/2026-08-17.json', JSON.stringify({
     date: '2026-08-17',
     time: '09:20',
     entries: [{ key: 'weight', raw: [64], value: 64 }]
   }));
-  sessions.set('data/2026-08-18.json', JSON.stringify({
+  sessions.set('accounts/alex/data/2026-08-18.json', JSON.stringify({
     date: '2026-08-18',
     time: '09:20',
     entries: [{ key: 'waist_who', raw: [86], value: 86 }]
   }));
-  unreadable.add('data/2026-08-18.json');
+  unreadable.add('accounts/alex/data/2026-08-18.json');
 
   const root = createElement('div');
   await history.render(root, { key: 'waist_who' });
   const text = textOf(root);
   assert.ok(text.includes('15.08.2026'), text);
   assert.ok(text.includes('Часть сессий пропущена'), text);
-  assert.ok(text.includes('data/2026-08-16.json'), text);
-  assert.ok(text.includes('data/2026-08-18.json'), text);
-  assert.ok(!text.includes('data/2026-08-17.json'), 'файл без выбранного key помечен ошибкой');
+  assert.ok(text.includes('accounts/alex/data/2026-08-16.json'), text);
+  assert.ok(text.includes('accounts/alex/data/2026-08-18.json'), text);
+  assert.ok(!text.includes('accounts/alex/data/2026-08-17.json'), 'файл без выбранного key помечен ошибкой');
   assert.equal(headerStatus.textContent, 'Частичные данные');
 
   unreadable.clear();
-  sessions.delete('data/2026-08-16.json');
-  sessions.delete('data/2026-08-17.json');
-  sessions.delete('data/2026-08-18.json');
+  sessions.delete('accounts/alex/data/2026-08-16.json');
+  sessions.delete('accounts/alex/data/2026-08-17.json');
+  sessions.delete('accounts/alex/data/2026-08-18.json');
 });
 
 await step('unreadable единственный raw сохраняет index sparkline и предупреждение', async () => {
   const saved = Array.from(sessions.entries());
   sessions.clear();
-  sessions.set('data/2026-08-14.json', saved[0][1]);
-  unreadable.add('data/2026-08-14.json');
+  sessions.set('accounts/alex/data/2026-08-14.json', saved[0][1]);
+  unreadable.add('accounts/alex/data/2026-08-14.json');
   try {
     const root = createElement('div');
     await history.render(root, { key: 'waist_who' });
@@ -371,7 +378,7 @@ await step('unreadable единственный raw сохраняет index spa
     assert.ok(svg, 'index sparkline затёрт пустыми rows');
     assert.equal(svg.children.filter((node) => node.tagName === 'PATH').length, 2);
     assert.equal(byClass(root, 'history-table__amount').length, 0);
-    assert.ok(textOf(root).includes('data/2026-08-14.json'), textOf(root));
+    assert.ok(textOf(root).includes('accounts/alex/data/2026-08-14.json'), textOf(root));
   } finally {
     unreadable.clear();
     sessions.clear();
@@ -381,7 +388,7 @@ await step('unreadable единственный raw сохраняет index spa
 
 await step('суффиксы --N сортируются численно при одинаковых date/time', async () => {
   for (const [suffix, value] of [[2, 2], [10, 10]]) {
-    sessions.set(`data/2026-08-20--${suffix}.json`, JSON.stringify({
+    sessions.set(`accounts/alex/data/2026-08-20--${suffix}.json`, JSON.stringify({
       date: '2026-08-20',
       time: '09:20',
       protocol_version: 2,
@@ -394,15 +401,15 @@ await step('суффиксы --N сортируются численно при 
     byClass(root, 'history-table__amount').slice(0, 2).map((node) => node.textContent),
     ['10 см', '2 см']
   );
-  sessions.delete('data/2026-08-20--2.json');
-  sessions.delete('data/2026-08-20--10.json');
+  sessions.delete('accounts/alex/data/2026-08-20--2.json');
+  sessions.delete('accounts/alex/data/2026-08-20--10.json');
 });
 
 await step('экран читает только index и исходные сессии, но ничего не пишет', () => {
-  assert.ok(calls.includes('index.json'));
-  assert.ok(calls.includes('data'));
-  assert.ok(calls.includes('data/2026-08-14.json'));
-  assert.ok(calls.includes('data/2026-08-15.json'));
+  assert.ok(calls.includes(INDEX_PATH));
+  assert.ok(calls.includes(DIR));
+  assert.ok(calls.includes('accounts/alex/data/2026-08-14.json'));
+  assert.ok(calls.includes('accounts/alex/data/2026-08-15.json'));
   const source = readFileSync(new URL('./screens/history.js', import.meta.url), 'utf8');
   assert.ok(!/writeFile|enqueue|\bsha\b/.test(source), 'история получила путь к изменению данных');
 });

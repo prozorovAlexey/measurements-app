@@ -36,6 +36,7 @@ const SHELL = [
   './catalog.js',
   './session.js',
   './queue.js',
+  './accounts.js',
   './sparkline.js',
   './figure.js',
   './asof.js',

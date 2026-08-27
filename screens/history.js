@@ -3,14 +3,14 @@
 // неизменяемых data/*.json: только там сохранены повторы raw и примечание.
 
 import { setHeaderStatus } from '../app.js';
+import { accountDataDir, accountIndexPath } from '../accounts.js';
 import { getMeasurement, loadCatalog } from '../catalog.js';
 import { readFile, listFiles } from '../github.js';
 import { sparkline } from '../sparkline.js';
-import { getIndexCache, setIndexCache } from '../store.js';
+import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
 
 export const title = 'История';
 
-const INDEX_PATH = 'index.json';
 const SESSION_NAME = /^\d{4}-\d{2}-\d{2}(?:--\d+)?\.json$/i;
 const UNIT_LABELS = new Map([['cm', 'см'], ['kg', 'кг']]);
 
@@ -130,7 +130,7 @@ function pointsFromRows(rows) {
 }
 
 async function loadRows(key) {
-  const files = (await listFiles('data'))
+  const files = (await listFiles(accountDataDir(getActiveAccount())))
     .filter((file) => typeof file.name === 'string' && SESSION_NAME.test(file.name))
     .sort((left, right) => {
       const leftOrder = sessionOrder(left.name);
@@ -361,7 +361,7 @@ export async function render(root, params) {
   }
 
   const results = await Promise.allSettled([
-    readFile(INDEX_PATH).then((result) => indexData(result.content)),
+    readFile(accountIndexPath(getActiveAccount())).then((result) => indexData(result.content)),
     loadRows(key)
   ]);
   if (outdated(token)) return;

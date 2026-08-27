@@ -11,6 +11,8 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import { accountDataDir, accountIndexPath } from './accounts.js';
+
 // ===== Мини-DOM (тот же приём, что в figure-screen.selftest.mjs) =========
 
 function createElement(tag) {
@@ -140,6 +142,11 @@ function jsonReply(payload) {
   return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify(payload) };
 }
 
+// 'alex' — уже реальный мигрированный аккаунт в data-репозитории (T29).
+const ACCOUNT = 'alex';
+const INDEX_PATH = accountIndexPath(ACCOUNT);
+const DIR = accountDataDir(ACCOUNT);
+
 let indexReply = { generated_at: new Date().toISOString(), latest: {}, series: {} };
 let dataFiles = []; // предзаполненные файлы data/, как будто уже лежат в repo B
 const githubCalls = [];
@@ -161,10 +168,10 @@ globalThis.fetch = async (url, init = {}) => {
     dataFiles.push({ name: path.split('/').pop(), sha, content });
     return jsonReply({ content: { sha, path }, commit: { sha: 'commit-sha' } });
   }
-  if (path === 'index.json') return jsonReply(fileEnvelope(indexReply));
-  if (path === 'data') {
+  if (path === INDEX_PATH) return jsonReply(fileEnvelope(indexReply));
+  if (path === DIR) {
     return jsonReply(dataFiles.map((file) => ({
-      type: 'file', name: file.name, path: `data/${file.name}`, sha: file.sha, size: 10
+      type: 'file', name: file.name, path: `${DIR}/${file.name}`, sha: file.sha, size: 10
     })));
   }
   throw new Error(`неожиданный запрос к GitHub: ${method} ${path}`);
@@ -214,6 +221,9 @@ async function renderScreen(series = FULL_SERIES) {
   githubCalls.length = 0;
   dataFiles = [];
   indexReply = indexWith(series);
+  // T31 (не эта задача) добавит гейт логина; T30 предполагает, что к моменту
+  // монтирования экрана активный профиль уже есть — сеем его так же, как токен.
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
   storage.set(store.KEYS.token, 'github_pat_fixture');
   storage.set(store.KEYS.index, JSON.stringify({ data: indexReply, fetchedAt: new Date().toISOString() }));
   storage.set(store.KEYS.catalog, JSON.stringify({ data: CATALOG_RAW, fetchedAt: new Date().toISOString() }));
@@ -304,7 +314,7 @@ await step('сохранение создаёт новый файл сессии
 
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  assert.equal(puts[0].path, `data/${todayISO}.json`);
+  assert.equal(puts[0].path, `${DIR}/${todayISO}.json`);
 
   const written = JSON.parse(Buffer.from(puts[0].body.content, 'base64').toString('utf8'));
   assert.equal(written.date, todayISO);
@@ -341,7 +351,7 @@ await step('открытый срез на прошлую дату не даёт
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const put = githubCalls.filter((call) => call.method === 'PUT').at(-1);
-  assert.equal(put.path, `data/${todayISO}.json`, 'запись обязана уйти в сегодняшний файл, а не в файл выбранного среза');
+  assert.equal(put.path, `${DIR}/${todayISO}.json`, 'запись обязана уйти в сегодняшний файл, а не в файл выбранного среза');
 });
 
 await step('отмена не отправляет ничего в очередь', async () => {

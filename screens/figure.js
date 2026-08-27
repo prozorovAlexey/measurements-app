@@ -3,6 +3,7 @@
 // сессий и пишет быстрый ввод только через очередь.
 
 import { setHeaderStatus, setHeaderSubtitle, toast } from '../app.js';
+import { accountIndexPath } from '../accounts.js';
 import { delta, sliceAt, sliceDates } from '../asof.js';
 import { figureMeasurements, getMeasurement, loadCachedCatalog, loadCatalog, protocolVersion } from '../catalog.js';
 import { silhouette } from '../figure.js';
@@ -11,6 +12,7 @@ import { enqueueEntry, flush, isPersistent, listJobs, onQueueChange, pendingEntr
 import { buildSession } from '../session.js';
 import { sparkline } from '../sparkline.js';
 import {
+  getActiveAccount,
   getIndexCache,
   getProfile,
   getShowAllCallouts,
@@ -21,7 +23,6 @@ import {
 
 export const title = 'Фигура';
 
-const INDEX_PATH = 'index.json';
 // §7.5 спеки: цена быстрого ввода — один повтор вместо трёх, помечается словами.
 const QUICK_NOTE = 'быстрый ввод, один повтор';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -450,6 +451,7 @@ export function createSheetController({ host, getPoint, onSaved }) {
       // файл сессии — голая постановка в очередь из T6 писала бы каждое
       // значение отдельным файлом.
       id = await enqueueEntry({
+        accountId: getActiveAccount(),
         date: session.date,
         entry: session.entries[0],
         message: `Быстрый ввод: ${current.entry.label} ${session.date}`
@@ -1304,7 +1306,7 @@ function outdated(token) {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(INDEX_PATH);
+    const file = await readFile(accountIndexPath(getActiveAccount()));
     const data = parseIndex(file.content);
     if (outdated(token)) return;
     setIndexCache(data);
@@ -1360,7 +1362,7 @@ function handleOnline() {
 async function refreshPending(token) {
   let pending;
   try {
-    pending = await pendingEntries();
+    pending = await pendingEntries(getActiveAccount());
   } catch {
     return;
   }

@@ -14,6 +14,7 @@
 // через очередь, только на сегодня — writeFile/listFiles здесь нет.
 
 import { setHeaderStatus } from '../app.js';
+import { accountIndexPath } from '../accounts.js';
 import { sliceAt } from '../asof.js';
 import {
   getMeasurement,
@@ -26,11 +27,10 @@ import { GitHubError, readFile } from '../github.js';
 import { createSheetController, todayISO } from './figure.js';
 import { onQueueChange, pendingEntries } from '../queue.js';
 import { sizeFor } from '../sizes.js';
-import { bumpOpens, getIndexCache, getProfile, setIndexCache } from '../store.js';
+import { bumpOpens, getActiveAccount, getIndexCache, getProfile, setIndexCache } from '../store.js';
 
 export const title = 'Размеры';
 
-const INDEX_PATH = 'index.json';
 const UNIT_LABELS = new Map([['cm', 'см'], ['kg', 'кг']]);
 const DAY_MS = 86400000;
 const DAY_FORMS = Object.freeze(['день', 'дня', 'дней']);
@@ -343,7 +343,7 @@ function paint() {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(INDEX_PATH);
+    const file = await readFile(accountIndexPath(getActiveAccount()));
     const data = parseIndex(file.content);
     if (outdated(token)) return;
     setIndexCache(data);
@@ -398,7 +398,7 @@ function handleOnline() {
 async function refreshPending(token) {
   let pending;
   try {
-    pending = await pendingEntries();
+    pending = await pendingEntries(getActiveAccount());
   } catch {
     return;
   }

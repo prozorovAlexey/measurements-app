@@ -29,16 +29,14 @@
 // это осознанное поведение, а не пропущенная ошибка.
 
 import { navigate, toast } from '../app.js';
+import { accountDataDir, accountIndexPath } from '../accounts.js';
 import { readFile } from '../github.js';
 import { enqueue, flush, isPersistent, listJobs } from '../queue.js';
-import { getIndexCache, setIndexCache } from '../store.js';
+import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
 import { getMeasurement, loadCatalog, protocolVersion } from '../catalog.js';
 import { buildSession, median, sessionFileName, validateReps } from '../session.js';
 
 export const title = 'Ввод сессии';
-
-const INDEX_PATH = 'index.json';
-const DATA_DIR = 'data';
 
 const UNITS = new Map([['cm', 'см'], ['kg', 'кг']]);
 
@@ -596,7 +594,7 @@ function outdated(token) {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(INDEX_PATH);
+    const file = await readFile(accountIndexPath(getActiveAccount()));
     const data = JSON.parse(file.content);
     if (outdated(token)) return;
     setIndexCache(data);
@@ -677,7 +675,7 @@ async function save() {
       // Имя предварительное: свободное подберёт queue.js в момент отправки,
       // потому что за время ожидания сети тот же день мог записать другой
       // телефон (§6.1).
-      path: `${DATA_DIR}/${sessionFileName(session.date, [])}`,
+      path: `${accountDataDir(getActiveAccount())}/${sessionFileName(session.date, [])}`,
       content: JSON.stringify(session, null, 2),
       message: `Сессия ${session.date} ${session.time}`
     });

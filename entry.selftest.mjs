@@ -33,6 +33,8 @@ import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { accountDataDir, accountIndexPath } from './accounts.js';
+
 // ===== Мини-DOM ===========================================================
 
 function createElement(tag) {
@@ -223,7 +225,11 @@ const CATALOG_RAW = JSON.parse(readFileSync(CATALOG_PATH, 'utf8'));
 const CATALOG_FIXTURE = { ...CATALOG_RAW, protocol_version: 7 };
 const PROTOCOL_VERSION = 7;
 
-const INDEX_PATH = 'index.json';
+// 'alex' — уже реальный мигрированный аккаунт в data-репозитории (T29);
+// экран ввода (T30) читает и пишет per-профильный путь через accounts.js.
+const ACCOUNT = 'alex';
+const INDEX_PATH = accountIndexPath(ACCOUNT);
+const DIR = accountDataDir(ACCOUNT);
 
 const githubCalls = [];
 let indexReply = { kind: 'data', body: null };
@@ -289,9 +295,9 @@ globalThis.fetch = async (url, init = {}) => {
     if (indexReply.kind === 'status') return failureReply(indexReply.status);
     return jsonReply(fileEnvelope(indexReply.body));
   }
-  if (path === 'data') {
+  if (path === DIR) {
     return jsonReply(dataFiles.map((file) => ({
-      type: 'file', name: file.name, path: `data/${file.name}`, sha: file.sha, size: 10
+      type: 'file', name: file.name, path: `${DIR}/${file.name}`, sha: file.sha, size: 10
     })));
   }
   throw new Error(`неожиданный запрос к GitHub: ${method} ${path}`);
@@ -356,6 +362,9 @@ async function renderScreen(options = {}) {
   githubCalls.length = 0;
   toastHost.replaceChildren();
   globalThis.location.hash = '#/entry';
+  // T31 (не эта задача) добавит гейт логина; T30 предполагает, что к моменту
+  // монтирования экрана активный профиль уже есть — сеем его так же, как токен.
+  storage.set(store.KEYS.activeAccount, ACCOUNT);
   if (token) storage.set(store.KEYS.token, token);
   if (index) {
     storage.set(store.KEYS.index, JSON.stringify({ data: index, fetchedAt: new Date().toISOString() }));
@@ -775,16 +784,16 @@ await step('protocol_version приезжает из catalog.json, а не из 
   assert.equal(session.entries[0].protocol_version, PROTOCOL_VERSION, 'в записи не версия каталога');
 });
 
-await step('путь записи — data/<YYYY-MM-DD>.json, и только новый файл', async () => {
+await step('путь записи — accounts/<id>/data/<YYYY-MM-DD>.json, и только новый файл', async () => {
   const root = await renderScreen({ index: INDEX_NEAR });
   fillReps(blockOf(root, 'waist_who'), ['86,5', '87,0', '86,8']);
   await clickSave(root);
 
-  // Ровно три запроса: предыдущие значения, листинг data/ и запись.
+  // Ровно три запроса: предыдущие значения, листинг data/ профиля и запись.
   // Чтения существующей сессии среди них нет — правкой тут заняться нечем.
   assert.deepEqual(
     githubCalls.map((call) => `${call.method} ${call.path}`),
-    [`GET ${INDEX_PATH}`, 'GET data', `PUT data/${entry.todayISO()}.json`]
+    [`GET ${INDEX_PATH}`, `GET ${DIR}`, `PUT ${DIR}/${entry.todayISO()}.json`]
   );
 });
 
@@ -794,7 +803,7 @@ await step('§6.1: вторая сессия за день уезжает в --2
   fillReps(blockOf(root, 'waist_who'), ['86,5', '87,0', '86,8']);
   await clickSave(root);
 
-  assert.equal(putCall().path, `data/${today}--2.json`);
+  assert.equal(putCall().path, `${DIR}/${today}--2.json`);
 });
 
 await step('чек-лист §10: writeFile вызывается без sha — правки старой сессии невозможны', async () => {
@@ -849,7 +858,7 @@ await step('T6: сеть вернулась — очередь дошлёт ту
 
   assert.deepEqual(result, { sent: 1, failed: 0, errors: [] });
   assert.equal(savedSession().entries[0].value, 86.8);
-  assert.equal(putCall().path, `data/${entry.todayISO()}.json`);
+  assert.equal(putCall().path, `${DIR}/${entry.todayISO()}.json`);
   assert.deepEqual(await queue.listJobs(), []);
 });
 
@@ -899,7 +908,7 @@ await step('пустая сессия не уходит в сеть, а объя
   await clickSave(root);
 
   assert.equal(putCall(), undefined, 'пустая сессия ушла в repo B');
-  assert.equal(githubCalls.filter((call) => call.path === 'data').length, 0, 'лишний листинг data/');
+  assert.equal(githubCalls.filter((call) => call.path === DIR).length, 0, 'лишний листинг data/ профиля');
   const text = messagesText(root);
   assert.match(text, /[а-яё]/i, `текст не русский: ${text}`);
   assert.ok(text.includes('нет ни одного значения'), text);
@@ -918,8 +927,11 @@ await step('чек-лист §10: в коде экрана нет ни одно�
   // С T6 экран вообще не пишет в repo B: единственный writeFile проекта
   // живёт в queue.js, и там же его сторожит queue.selftest.mjs.
   assert.equal((CODE.match(/writeFile\(/g) ?? []).length, 0, 'экран снова пишет в repo B мимо очереди');
-  assert.equal((CODE.match(/readFile\(/g) ?? []).length, 1, 'экран читает что-то ещё, кроме index.json');
-  assert.ok(CODE.includes('readFile(INDEX_PATH)'), 'единственное чтение — не index.json');
+  assert.equal((CODE.match(/readFile\(/g) ?? []).length, 1, 'экран читает что-то ещё, кроме index.json профиля');
+  assert.ok(
+    CODE.includes('readFile(accountIndexPath(getActiveAccount()))'),
+    'единственное чтение — не per-профильный index.json (T30, §17 контракта)'
+  );
   assert.ok(!/readFileOrNull/.test(CODE));
 });
 

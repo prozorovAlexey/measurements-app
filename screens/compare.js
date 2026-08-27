@@ -9,6 +9,7 @@
 // сравнение не редактирует сессии, только читает их.
 
 import { setHeaderStatus } from '../app.js';
+import { accountIndexPath } from '../accounts.js';
 import { delta, sliceAt, sliceDates } from '../asof.js';
 import {
   dynamicMeasurements,
@@ -20,11 +21,10 @@ import {
 import { GitHubError, readFile } from '../github.js';
 import { figureSubtabs } from './figure.js';
 import { onQueueChange, pendingEntries } from '../queue.js';
-import { getIndexCache, setIndexCache } from '../store.js';
+import { getActiveAccount, getIndexCache, setIndexCache } from '../store.js';
 
 export const title = 'Сравнение';
 
-const INDEX_PATH = 'index.json';
 const UNIT_LABELS = new Map([['cm', 'см'], ['kg', 'кг']]);
 const DAY_MS = 86400000;
 const DAY_FORMS = Object.freeze(['день', 'дня', 'дней']);
@@ -396,7 +396,7 @@ function paint() {
 
 async function runRefresh(token) {
   try {
-    const file = await readFile(INDEX_PATH);
+    const file = await readFile(accountIndexPath(getActiveAccount()));
     const data = parseIndex(file.content);
     if (outdated(token)) return;
     setIndexCache(data);
@@ -451,7 +451,7 @@ function handleOnline() {
 async function refreshPending(token) {
   let pending;
   try {
-    pending = await pendingEntries();
+    pending = await pendingEntries(getActiveAccount());
   } catch {
     return;
   }
